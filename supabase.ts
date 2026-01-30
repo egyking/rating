@@ -2,11 +2,18 @@
 import { createClient } from '@supabase/supabase-js';
 import { EvaluationRecord, Inspector, EvaluationItem, Target, Holiday, AuthUser } from './types';
 
-// تهيئة عميل Supabase باستخدام الرابط والمفتاح الخاص بمشروعك
+// رابط مشروعك الخاص
 const supabaseUrl = 'https://ipwfkgahrlkfccobgejm.supabase.co';
-// نستخدم SUPABASE_KEY كما ورد في طلبك، مع توفير بديل شائع لضمان العمل
-const supabaseKey = process.env.SUPABASE_KEY || process.env.SUPABASE_ANON_KEY || '';
 
+/**
+ * مفتاح Supabase (Anon Key).
+ * تم وضع المفتاح الذي زودتنا به كقيمة افتراضية لضمان عمل التطبيق فوراً.
+ */
+const supabaseKey = process.env.SUPABASE_KEY || 
+                    process.env.SUPABASE_ANON_KEY || 
+                    'sb_publishable_rjL24yhlKKqKKXFaxRHXPQ_4_2CDsrf';
+
+// إنشاء عميل Supabase - لن ينهار التطبيق الآن لأن المفتاح متوفر دائماً
 export const supabase = createClient(supabaseUrl, supabaseKey);
 
 const STORAGE_KEYS = {
@@ -18,7 +25,11 @@ const STORAGE_KEYS = {
 
 const getLocal = (key: string, defaultValue: any) => {
   const data = localStorage.getItem(key);
-  return data ? JSON.parse(data) : defaultValue;
+  try {
+    return data ? JSON.parse(data) : defaultValue;
+  } catch (e) {
+    return defaultValue;
+  }
 };
 
 const setLocal = (key: string, data: any) => {
@@ -26,7 +37,7 @@ const setLocal = (key: string, data: any) => {
 };
 
 export const supabaseService = {
-  // جلب المفتشين مع التحديث من السحابة
+  // جلب المفتشين مع دعم التخزين المؤقت
   getInspectors: async (): Promise<Inspector[]> => {
     try {
       const { data, error } = await supabase.from('inspectors').select('*').eq('active', true);
@@ -34,7 +45,7 @@ export const supabaseService = {
       setLocal(STORAGE_KEYS.INSPECTORS, data);
       return data;
     } catch (e) {
-      console.warn('Using local inspectors cache');
+      console.warn('فشل الاتصال بـ Supabase، يتم استخدام البيانات المحلية');
       return getLocal(STORAGE_KEYS.INSPECTORS, []);
     }
   },
@@ -47,20 +58,17 @@ export const supabaseService = {
       setLocal(STORAGE_KEYS.ITEMS, data);
       return data;
     } catch (e) {
-      console.warn('Using local items cache');
       return getLocal(STORAGE_KEYS.ITEMS, []);
     }
   },
 
-  // تسجيل دخول متصل بجدول المفتشين
+  // نظام المصادقة
   authenticate: async (username: string, password: string): Promise<AuthUser | null> => {
-    // حساب المدير الافتراضي
     if (username === 'admin' && password === 'admin') {
       return { id: 'admin-1', username: 'admin', fullName: 'مدير النظام', role: 'admin' };
     }
     
     try {
-      // البحث في جدول المفتشين عن اسم المستخدم
       const { data, error } = await supabase
         .from('inspectors')
         .select('*')
@@ -68,7 +76,7 @@ export const supabaseService = {
         .limit(1)
         .single();
 
-      if (data && password === '123') { // كلمة مرور افتراضية للمفتشين
+      if (data && password === '123') {
         return { 
           id: data.id, 
           username, 
@@ -83,11 +91,10 @@ export const supabaseService = {
     return null;
   },
 
-  // جلب السجلات مع الفلترة الذكية
+  // جلب السجلات مع الفلترة
   getRecords: async (filters?: any): Promise<EvaluationRecord[]> => {
     try {
       let query = supabase.from('evaluation_records').select('*').order('date', { ascending: false });
-      
       if (filters?.employee) query = query.ilike('inspector_name', `%${filters.employee}%`);
       if (filters?.dateFrom) query = query.gte('date', filters.dateFrom);
       if (filters?.dateTo) query = query.lte('date', filters.dateTo);
@@ -101,31 +108,30 @@ export const supabaseService = {
     }
   },
 
-  // حفظ سجلات جديدة مع دعم المزامنة المتأخرة
+  // حفظ التقييمات (مزامنة فورية أو حفظ محلي)
   saveBatchEvaluations: async (list: any[]) => {
     try {
       const { data, error } = await supabase.from('evaluation_records').insert(list).select();
       if (error) throw error;
       
       const currentLocal = getLocal(STORAGE_KEYS.RECORDS, []);
-      setLocal(STORAGE_KEYS.RECORDS, [...data, ...currentLocal]);
+      setLocal(STORAGE_KEYS.RECORDS, [...(data || []), ...currentLocal]);
       
-      return { success: true, count: data.length };
+      return { success: true, count: data?.length || 0 };
     } catch (e) {
-      // حفظ محلي في حالة انقطاع الاتصال
+      // حفظ في الـ Local Storage في حال انقطاع الإنترنت
       const offlineRecords = list.map(r => ({ 
         ...r, 
-        id: `offline-${Date.now()}-${Math.random()}`, 
+        id: `off-${Date.now()}-${Math.random()}`, 
         pending_sync: true 
       }));
       const currentLocal = getLocal(STORAGE_KEYS.RECORDS, []);
       setLocal(STORAGE_KEYS.RECORDS, [...offlineRecords, ...currentLocal]);
-      
       return { success: true, count: offlineRecords.length, offline: true };
     }
   },
 
-  // جلب وإدارة المستهدفات
+  // جلب المستهدفات
   getTargets: async (): Promise<Target[]> => {
     try {
       const { data, error } = await supabase.from('targets').select('*');
@@ -138,20 +144,14 @@ export const supabaseService = {
   },
 
   saveTarget: async (targetData: any) => {
-    try {
-      const { data, error } = await supabase.from('targets').insert([targetData]).select();
-      if (error) return { success: false, error };
-      return { success: true, data };
-    } catch (e) {
-      return { success: false, error: e };
-    }
+    const { data, error } = await supabase.from('targets').insert([targetData]).select();
+    return { success: !error, data };
   },
 
   getHolidays: async (): Promise<Holiday[]> => {
     try {
-      const { data, error } = await supabase.from('holidays').select('*');
-      if (error) throw error;
-      return data;
+      const { data } = await supabase.from('holidays').select('*');
+      return data || [];
     } catch (e) {
       return [];
     }
