@@ -7,6 +7,9 @@ const supabaseKey = process.env.SUPABASE_KEY || process.env.SUPABASE_ANON_KEY ||
 
 export const supabase = createClient(supabaseUrl, supabaseKey);
 
+const ADMIN_UUID = '00000000-0000-0000-0000-000000000000';
+const TEST_INSPECTOR_UUID = '11111111-1111-1111-1111-111111111111';
+
 export const supabaseService = {
   getInspectors: async () => {
     const { data } = await supabase.from('inspectors').select('*').order('name');
@@ -39,30 +42,62 @@ export const supabaseService = {
   },
 
   authenticate: async (username: string, password: string): Promise<AuthUser | null> => {
-    // استخدام UUID صالح للمدير لتجنب أخطاء قاعدة البيانات
+    // 1. حساب المدير الافتراضي
     if (username === 'admin' && password === 'admin') {
       return { 
-        id: '00000000-0000-0000-0000-000000000000', 
+        id: ADMIN_UUID, 
         username: 'admin', 
         fullName: 'مدير النظام', 
         role: 'admin' 
       };
     }
-    const { data } = await supabase.from('inspectors').select('*').ilike('name', `%${username}%`).limit(1).single();
-    if (data && password === '123') {
-      return { id: data.id, username, fullName: data.name, role: 'inspector', department: data.department };
+
+    // 2. حساب مفتش تجريبي (للاختبار السريع)
+    if (username === 'inspector' && password === '123') {
+      return {
+        id: TEST_INSPECTOR_UUID,
+        username: 'inspector',
+        fullName: 'مفتش تجريبي',
+        role: 'inspector',
+        department: 'قسم التفتيش العام'
+      };
     }
+
+    // 3. البحث في قاعدة البيانات عن المفتشين المسجلين فعلياً
+    try {
+      const { data, error } = await supabase
+        .from('inspectors')
+        .select('*')
+        .ilike('name', username) // بحث مطابق للاسم
+        .limit(1)
+        .single();
+
+      if (data && password === '123') {
+        return { 
+          id: data.id, 
+          username: data.name, 
+          fullName: data.name, 
+          role: 'inspector', 
+          department: data.department 
+        };
+      }
+    } catch (e) {
+      console.warn("User not found in database, checking mocks...");
+    }
+
     return null;
   },
 
   saveBatchEvaluations: async (evaluations: any[]) => {
     try {
-      // تنظيف البيانات قبل الإرسال للتأكد من أن المعرفات صالحة
-      const cleanEvals = evaluations.map(ev => ({
-        ...ev,
-        // إذا كان المعرف هو معرف المدير الوهمي، نرسله كـ null لأن المدير ليس "مفتشاً" مسجلاً في جدول المفتشين
-        inspector_id: ev.inspector_id === '00000000-0000-0000-0000-000000000000' ? null : ev.inspector_id
-      }));
+      const cleanEvals = evaluations.map(ev => {
+        const isValidUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-5][0-9a-f]{3}-[089ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(ev.inspector_id);
+        return {
+          ...ev,
+          // إذا كان المستخدم هو المدير أو مستخدم تجريبي، نترك المعرف كـ null أو نستخدم UUID صالح
+          inspector_id: (ev.inspector_id === ADMIN_UUID || !isValidUUID) ? null : ev.inspector_id
+        };
+      });
 
       const { data, error } = await supabase.from('evaluation_records').insert(cleanEvals).select();
       if (error) throw error;
