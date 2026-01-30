@@ -1,5 +1,5 @@
 
-export type UserRole = 'admin' | 'manager' | 'inspector';
+export type UserRole = 'admin' | 'inspector';
 
 export interface AuthUser {
   id: string;
@@ -44,11 +44,7 @@ export interface EvaluationRecord {
   count: number;
   notes: string;
   answers: any;
-  location?: {
-    latitude: number;
-    longitude: number;
-  };
-  image_url?: string;
+  metadata?: any;
 }
 
 export interface Target {
