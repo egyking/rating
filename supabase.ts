@@ -39,8 +39,14 @@ export const supabaseService = {
   },
 
   authenticate: async (username: string, password: string): Promise<AuthUser | null> => {
+    // استخدام UUID صالح للمدير لتجنب أخطاء قاعدة البيانات
     if (username === 'admin' && password === 'admin') {
-      return { id: 'admin-1', username: 'admin', fullName: 'مدير النظام', role: 'admin' };
+      return { 
+        id: '00000000-0000-0000-0000-000000000000', 
+        username: 'admin', 
+        fullName: 'مدير النظام', 
+        role: 'admin' 
+      };
     }
     const { data } = await supabase.from('inspectors').select('*').ilike('name', `%${username}%`).limit(1).single();
     if (data && password === '123') {
@@ -51,7 +57,14 @@ export const supabaseService = {
 
   saveBatchEvaluations: async (evaluations: any[]) => {
     try {
-      const { data, error } = await supabase.from('evaluation_records').insert(evaluations).select();
+      // تنظيف البيانات قبل الإرسال للتأكد من أن المعرفات صالحة
+      const cleanEvals = evaluations.map(ev => ({
+        ...ev,
+        // إذا كان المعرف هو معرف المدير الوهمي، نرسله كـ null لأن المدير ليس "مفتشاً" مسجلاً في جدول المفتشين
+        inspector_id: ev.inspector_id === '00000000-0000-0000-0000-000000000000' ? null : ev.inspector_id
+      }));
+
+      const { data, error } = await supabase.from('evaluation_records').insert(cleanEvals).select();
       if (error) throw error;
       return { success: true, count: data?.length || 0 };
     } catch (e) {

@@ -1,68 +1,23 @@
 
--- مخطط قاعدة بيانات مطور لنظام الجنوب (بدون موقع أو صور)
-CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+-- تنفيذ هذا الكود في SQL Editor بداخل Supabase لإصلاح الأخطاء المذكورة
 
--- جدول المفتشين
-CREATE TABLE IF NOT EXISTS inspectors (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    name TEXT NOT NULL,
-    active BOOLEAN DEFAULT true,
-    department TEXT,
-    role TEXT DEFAULT 'inspector', -- admin or inspector
-    created_at TIMESTAMPTZ DEFAULT NOW()
-);
+-- 1. إضافة عمود metadata المفقود
+ALTER TABLE evaluation_records 
+ADD COLUMN IF NOT EXISTS metadata JSONB DEFAULT '{}'::jsonb;
 
--- جدول بنود التقييم
-CREATE TABLE IF NOT EXISTS evaluation_items (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    main_item TEXT NOT NULL,
-    sub_item TEXT NOT NULL,
-    code TEXT UNIQUE NOT NULL,
-    department TEXT,
-    sub_types JSONB DEFAULT '[]'::jsonb,
-    once_per_day BOOLEAN DEFAULT false,
-    notes TEXT,
-    questions JSONB DEFAULT '[]'::jsonb,
-    linked_items JSONB DEFAULT '[]'::jsonb,
-    created_at TIMESTAMPTZ DEFAULT NOW()
-);
+-- 2. إضافة عمود answers المفقود (لضمان عدم حدوث خطأ مستقبلي)
+ALTER TABLE evaluation_records 
+ADD COLUMN IF NOT EXISTS answers JSONB DEFAULT '{}'::jsonb;
 
--- جدول السجلات (تم حذف الموقع والصور)
-CREATE TABLE IF NOT EXISTS evaluation_records (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    created_at TIMESTAMPTZ DEFAULT NOW(),
-    date DATE NOT NULL DEFAULT CURRENT_DATE,
-    inspector_id UUID REFERENCES inspectors(id) ON DELETE SET NULL,
-    inspector_name TEXT,
-    item_id UUID REFERENCES evaluation_items(id) ON DELETE SET NULL,
-    sub_item TEXT,
-    main_item TEXT,
-    sub_type TEXT,
-    code TEXT,
-    department TEXT,
-    count INTEGER DEFAULT 1,
-    notes TEXT,
-    answers JSONB DEFAULT '{}'::jsonb,
-    metadata JSONB DEFAULT '{}'::jsonb
-);
+-- 3. التأكد من أن حقل معرف المفتش يقبل القيمة الفارغة (للسماح للمدير بالإدخال)
+ALTER TABLE evaluation_records 
+ALTER COLUMN inspector_id DROP NOT NULL;
 
--- جدول المستهدفات
-CREATE TABLE IF NOT EXISTS targets (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    inspector_id UUID REFERENCES inspectors(id) ON DELETE CASCADE,
-    inspector_name TEXT,
-    main_item TEXT NOT NULL DEFAULT 'جميع البنود',
-    target_value INTEGER NOT NULL DEFAULT 0,
-    start_date DATE NOT NULL,
-    end_date DATE NOT NULL,
-    created_at TIMESTAMPTZ DEFAULT NOW()
-);
+-- 4. تحديث جدول المستهدفات لدعم البحث بالبند الرئيسي
+ALTER TABLE targets 
+ADD COLUMN IF NOT EXISTS main_item TEXT NOT NULL DEFAULT 'جميع البنود';
 
--- جدول العطلات
-CREATE TABLE IF NOT EXISTS holidays (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    date DATE UNIQUE NOT NULL,
-    name TEXT NOT NULL
-);
-
-CREATE INDEX IF NOT EXISTS idx_records_date_ins ON evaluation_records(date, inspector_id);
+-- 5. تحديث جدول بنود التقييم لدعم الأسئلة والبنود المرتبطة
+ALTER TABLE evaluation_items 
+ADD COLUMN IF NOT EXISTS questions JSONB DEFAULT '[]'::jsonb,
+ADD COLUMN IF NOT EXISTS linked_items JSONB DEFAULT '[]'::jsonb;
