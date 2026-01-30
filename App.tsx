@@ -5,6 +5,7 @@ import EvaluationForm from './components/EvaluationForm';
 import RecordsList from './components/RecordsList';
 import TargetsView from './components/TargetsView';
 import SettingsView from './components/SettingsView';
+import ReportsView from './components/ReportsView';
 import Login from './components/Login';
 import { AuthUser } from './types';
 
@@ -18,7 +19,6 @@ const App: React.FC = () => {
     if (savedUser) {
       const parsedUser = JSON.parse(savedUser);
       setUser(parsedUser);
-      // المفتش يبدأ دائماً من نموذج الإدخال
       if (parsedUser.role === 'inspector') setActiveTab('form');
     }
   }, []);
@@ -57,7 +57,6 @@ const App: React.FC = () => {
 
   return (
     <div className="flex h-screen bg-[#f8fafc] overflow-hidden no-print font-['Tajawal']" dir="rtl">
-      {/* Sidebar */}
       <aside className={`${isSidebarOpen ? 'w-72' : 'w-20'} bg-[#0f172a] transition-all duration-500 flex flex-col shadow-2xl z-30 relative`}>
         <div className="p-6 flex items-center justify-between border-b border-gray-800/50">
           <div className={`flex items-center gap-3 ${!isSidebarOpen && 'hidden'} overflow-hidden`}>
@@ -75,6 +74,7 @@ const App: React.FC = () => {
           <NavItem tab="dashboard" icon="fa-chart-pie" label="لوحة الأداء" />
           <NavItem tab="form" icon="fa-circle-plus" label="إدخال تقييم" />
           <NavItem tab="records" icon="fa-rectangle-list" label={user.role === 'admin' ? "أرشيف السجلات" : "سجلاتي الشخصية"} />
+          <NavItem tab="reports" icon="fa-chart-column" label="التقارير التحليلية" />
           <NavItem tab="targets" icon="fa-bullseye-arrow" label="إدارة المستهدفات" roles={['admin']} />
           <NavItem tab="settings" icon="fa-sliders" label="إعدادات المنصة" roles={['admin']} />
         </nav>
@@ -94,13 +94,13 @@ const App: React.FC = () => {
         </div>
       </aside>
 
-      {/* Main Content Area */}
       <main className="flex-1 overflow-y-auto custom-scrollbar relative">
         <div className="p-8 max-w-[1400px] mx-auto">
           <div className="animate-in fade-in slide-in-from-top-4 duration-500">
             {activeTab === 'dashboard' && <Dashboard userRole={user.role} userId={user.id} />}
             {activeTab === 'form' && <EvaluationForm onSaved={() => setActiveTab('records')} currentUser={user} />}
             {activeTab === 'records' && <RecordsList userRole={user.role} userId={user.id} />}
+            {activeTab === 'reports' && <ReportsView userRole={user.role} userId={user.id} />}
             {activeTab === 'targets' && <TargetsView />}
             {activeTab === 'settings' && <SettingsView />}
           </div>
