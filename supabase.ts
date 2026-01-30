@@ -9,8 +9,23 @@ export const supabase = createClient(supabaseUrl, supabaseKey);
 
 export const supabaseService = {
   getInspectors: async () => {
-    const { data } = await supabase.from('inspectors').select('*').eq('active', true).order('name');
+    const { data } = await supabase.from('inspectors').select('*').order('name');
     return data || [];
+  },
+
+  saveInspectors: async (inspectors: Partial<Inspector>[]) => {
+    const { data, error } = await supabase.from('inspectors').insert(inspectors).select();
+    return { success: !error, data, error };
+  },
+
+  deleteInspector: async (id: string) => {
+    const { error } = await supabase.from('inspectors').delete().eq('id', id);
+    return { success: !error, error };
+  },
+
+  updateInspector: async (id: string, updates: Partial<Inspector>) => {
+    const { error } = await supabase.from('inspectors').update(updates).eq('id', id);
+    return { success: !error, error };
   },
 
   getItems: async () => {
@@ -55,7 +70,7 @@ export const supabaseService = {
   },
 
   getTargets: async () => {
-    const { data } = await supabase.from('targets').select('*');
+    const { data } = await supabase.from('targets').select('*').order('created_at', { ascending: false });
     return data || [];
   },
 
@@ -64,7 +79,16 @@ export const supabaseService = {
     return { success: !error, data };
   },
 
-  // دالة متقدمة لحساب النقاط (Scoring) المستوحاة من الكود القديم
+  saveBatchTargets: async (targets: any[]) => {
+    const { data, error } = await supabase.from('targets').insert(targets).select();
+    return { success: !error, data, error };
+  },
+
+  deleteTarget: async (id: string) => {
+    const { error } = await supabase.from('targets').delete().eq('id', id);
+    return { success: !error, error };
+  },
+
   calculatePerformanceScore: (dailyCount: number, isPersonalVacation: boolean = false) => {
     if (isPersonalVacation) return 10;
     if (dailyCount <= 1) return 0;
