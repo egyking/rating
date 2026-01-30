@@ -105,6 +105,13 @@ const SettingsView: React.FC = () => {
               <button onClick={() => setShowBulkModal(false)} className="text-gray-400 hover:text-gray-600"><i className="fas fa-times"></i></button>
             </div>
 
+            <div className="bg-blue-50 p-4 rounded-2xl border border-blue-100 flex items-start gap-3">
+              <i className="fas fa-info-circle text-blue-600 mt-1"></i>
+              <p className="text-xs text-blue-800 font-bold leading-relaxed">
+                ملاحظة: سيتمكن المفتشون المضافون من الدخول باستخدام أسمائهم كاسم مستخدم وكلمة المرور الافتراضية <span className="bg-blue-600 text-white px-2 py-0.5 rounded ml-1">123</span>
+              </p>
+            </div>
+
             <div className="space-y-4">
               <div>
                 <label className="block text-xs font-black text-gray-400 mb-2 uppercase">🏢 القسم الموحد</label>
