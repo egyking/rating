@@ -1,15 +1,16 @@
 
--- 1. جدول المفتشين
+-- 1. جدول المفتشين (تحديث ليشمل كلمة المرور)
 CREATE TABLE IF NOT EXISTS inspectors (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     name TEXT NOT NULL UNIQUE,
+    password TEXT DEFAULT '123456', -- كلمة مرور افتراضية
     department TEXT DEFAULT 'الجنوب',
     active BOOLEAN DEFAULT true,
     role TEXT DEFAULT 'inspector',
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
--- 2. جدول بنود التقييم (يحتوي على منطق الـ JSON)
+-- 2. باقي الجداول تبقى كما هي لضمان استمرارية البيانات
 CREATE TABLE IF NOT EXISTS evaluation_items (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     sub_item TEXT NOT NULL,
@@ -22,7 +23,6 @@ CREATE TABLE IF NOT EXISTS evaluation_items (
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
--- 3. جدول السجلات (أرشيف الحركات)
 CREATE TABLE IF NOT EXISTS evaluation_records (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
@@ -41,7 +41,6 @@ CREATE TABLE IF NOT EXISTS evaluation_records (
     metadata JSONB DEFAULT '{}'::jsonb
 );
 
--- 4. جدول المستهدفات والعطلات
 CREATE TABLE IF NOT EXISTS targets (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     inspector_id UUID REFERENCES inspectors(id) ON DELETE CASCADE,

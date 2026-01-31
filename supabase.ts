@@ -8,7 +8,6 @@ const supabaseKey = process.env.SUPABASE_KEY || process.env.SUPABASE_ANON_KEY ||
 export const supabase = createClient(supabaseUrl, supabaseKey);
 
 const ADMIN_UUID = '00000000-0000-0000-0000-000000000000';
-const TEST_INSPECTOR_UUID = '11111111-1111-1111-1111-111111111111';
 
 export const supabaseService = {
   // Inspectors
@@ -16,13 +15,45 @@ export const supabaseService = {
     const { data } = await supabase.from('inspectors').select('*').order('name');
     return data || [];
   },
-  saveInspectors: async (inspectors: Partial<Inspector>[]) => {
+  saveInspectors: async (inspectors: any[]) => {
     const { data, error } = await supabase.from('inspectors').insert(inspectors).select();
     return { success: !error, data, error };
   },
   deleteInspector: async (id: string) => {
     const { error } = await supabase.from('inspectors').delete().eq('id', id);
     return { success: !error, error };
+  },
+
+  // Authentication
+  authenticate: async (username: string, password: string): Promise<AuthUser | null> => {
+    // Admin Hardcoded Check
+    if (username === 'admin' && password === 'admin') {
+      return { id: ADMIN_UUID, username: 'admin', fullName: 'مدير النظام', role: 'admin' };
+    }
+
+    try {
+      // البحث عن المستخدم بكلمة المرور الخاصة به
+      const { data, error } = await supabase
+        .from('inspectors')
+        .select('*')
+        .eq('name', username)
+        .eq('password', password)
+        .limit(1)
+        .single();
+
+      if (data) {
+        return { 
+          id: data.id, 
+          username: data.name, 
+          fullName: data.name, 
+          role: (data.role as any) || 'inspector', 
+          department: data.department 
+        };
+      }
+    } catch (e) {
+      console.error("Auth Error", e);
+    }
+    return null;
   },
 
   // Evaluation Items
@@ -39,44 +70,13 @@ export const supabaseService = {
     return { success: !error, error };
   },
 
-  // Holidays
-  getHolidays: async () => {
-    const { data } = await supabase.from('holidays').select('*').order('date');
-    return data || [];
-  },
-  saveHoliday: async (holiday: Partial<Holiday>) => {
-    const { data, error } = await supabase.from('holidays').insert([holiday]).select();
-    return { success: !error, data, error };
-  },
-  deleteHoliday: async (id: string) => {
-    const { error } = await supabase.from('holidays').delete().eq('id', id);
-    return { success: !error, error };
-  },
-
-  authenticate: async (username: string, password: string): Promise<AuthUser | null> => {
-    if (username === 'admin' && password === 'admin') {
-      return { id: ADMIN_UUID, username: 'admin', fullName: 'مدير النظام', role: 'admin' };
-    }
-    if (username === 'inspector' && password === '123') {
-      return { id: TEST_INSPECTOR_UUID, username: 'inspector', fullName: 'مفتش تجريبي', role: 'inspector' };
-    }
-    try {
-      const { data } = await supabase.from('inspectors').select('*').ilike('name', username).limit(1).single();
-      if (data && password === '123') {
-        return { id: data.id, username: data.name, fullName: data.name, role: 'inspector', department: data.department };
-      }
-    } catch (e) {}
-    return null;
-  },
-
   saveBatchEvaluations: async (evaluations: any[]) => {
-    // جلب قائمة المعرفات الحقيقية لتجنب خطأ Foreign Key
+    // تنظيف البيانات لضمان عدم وجود معرفات وهمية تكسر الـ Foreign Key
     const { data: realInspectors } = await supabase.from('inspectors').select('id');
     const validIds = new Set(realInspectors?.map(i => i.id) || []);
 
     const cleanEvals = evaluations.map(ev => ({
       ...ev,
-      // إذا كان المعرف غير موجود في جدول المفتشين (مثل الحسابات التجريبية)، نرسله كـ null
       inspector_id: validIds.has(ev.inspector_id) ? ev.inspector_id : null
     }));
 
