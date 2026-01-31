@@ -39,131 +39,82 @@ const RecordsList: React.FC<RecordsListProps> = ({ userRole, userId }) => {
   };
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-col md:flex-row justify-between items-center gap-4 no-print">
-        <h3 className="text-xl font-black text-gray-800">
-          {userRole === 'admin' ? 'أرشيف التقييمات' : 'أرشيف تقييماتي الشخصية'}
-        </h3>
-        <div className="flex gap-2 w-full md:w-auto">
-          <button onClick={() => exportToExcel(records)} className="flex-1 md:flex-none bg-emerald-600 text-white px-4 py-3 rounded-2xl font-black text-xs flex items-center justify-center gap-2 shadow-lg shadow-emerald-500/20">
-            <i className="fas fa-file-excel"></i> Excel
-          </button>
-          <button onClick={printReport} className="flex-1 md:flex-none bg-slate-700 text-white px-4 py-3 rounded-2xl font-black text-xs flex items-center justify-center gap-2 shadow-lg shadow-slate-500/20">
-            <i className="fas fa-print"></i> طباعة
-          </button>
-        </div>
-      </div>
-
-      <div className="bg-white p-6 rounded-[2.5rem] shadow-sm border border-gray-100 no-print space-y-4">
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-          {userRole === 'admin' && (
-            <div>
-              <label className="text-[10px] font-black text-gray-400 mr-2 uppercase">المفتش</label>
-              <input 
-                type="text" 
-                placeholder="بحث باسم المفتش..."
-                className="w-full bg-gray-50 border-2 border-transparent focus:border-blue-500 rounded-2xl py-3 px-4 text-xs font-bold transition-all"
-                value={filters.employee}
-                onChange={(e) => handleFilterChange('employee', e.target.value)}
-              />
-            </div>
-          )}
-          <div>
-            <label className="text-[10px] font-black text-gray-400 mr-2 uppercase">اسم البند</label>
-            <input 
-              type="text" 
-              placeholder="بحث في أسماء البنود..."
-              className="w-full bg-gray-50 border-2 border-transparent focus:border-blue-500 rounded-2xl py-3 px-4 text-xs font-bold transition-all"
-              value={filters.sub_item}
-              onChange={(e) => handleFilterChange('sub_item', e.target.value)}
-            />
-          </div>
-          <div>
-            <label className="text-[10px] font-black text-gray-400 mr-2 uppercase">الحالة</label>
-            <select 
-              className="w-full bg-gray-50 border-2 border-transparent focus:border-blue-500 rounded-2xl py-3 px-4 text-xs font-bold transition-all"
-              value={filters.status}
-              onChange={(e) => handleFilterChange('status', e.target.value)}
-            >
-              <option value="">الكل</option>
-              <option value="approved">معتمد</option>
-              <option value="pending">بانتظار الاعتماد</option>
-            </select>
-          </div>
-          <div className="grid grid-cols-2 gap-2">
-            <div>
-              <label className="text-[10px] font-black text-gray-400 mr-2 uppercase">من تاريخ</label>
-              <input 
-                type="date" 
-                className="w-full bg-gray-50 border-2 border-transparent focus:border-blue-500 rounded-2xl py-3 px-4 text-[10px] font-bold transition-all"
-                value={filters.dateFrom}
-                onChange={(e) => handleFilterChange('dateFrom', e.target.value)}
-              />
-            </div>
-            <div>
-              <label className="text-[10px] font-black text-gray-400 mr-2 uppercase">إلى تاريخ</label>
-              <input 
-                type="date" 
-                className="w-full bg-gray-50 border-2 border-transparent focus:border-blue-500 rounded-2xl py-3 px-4 text-[10px] font-bold transition-all"
-                value={filters.dateTo}
-                onChange={(e) => handleFilterChange('dateTo', e.target.value)}
-              />
-            </div>
-          </div>
-        </div>
+    <div className="space-y-4">
+      <div className="flex justify-between items-center no-print">
+        <h3 className="text-sm font-black text-gray-800 uppercase tracking-widest">أرشيف التقييمات</h3>
         <div className="flex gap-2">
-          <button onClick={loadRecords} className="flex-1 bg-blue-600 text-white py-3 rounded-2xl font-black text-xs hover:bg-blue-700 shadow-lg shadow-blue-500/20 transition-all">
-             تطبيق الفلاتر
+          <button onClick={() => exportToExcel(records)} className="bg-emerald-600 text-white w-9 h-9 rounded-xl flex items-center justify-center shadow-md">
+            <i className="fas fa-file-excel text-xs"></i>
           </button>
-          <button onClick={clearFilters} className="px-6 bg-gray-100 text-gray-400 py-3 rounded-2xl font-black text-xs hover:bg-gray-200 transition-all">
-             مسح
+          <button onClick={printReport} className="bg-slate-700 text-white w-9 h-9 rounded-xl flex items-center justify-center shadow-md">
+            <i className="fas fa-print text-xs"></i>
           </button>
         </div>
       </div>
 
-      <div className="bg-white rounded-[2.5rem] shadow-sm border border-gray-100 overflow-hidden">
-        {loading ? (
-          <div className="p-20 text-center"><i className="fas fa-spinner fa-spin text-blue-600 text-2xl"></i></div>
-        ) : (
-          <div className="overflow-x-auto custom-scrollbar">
-            <table className="w-full text-right">
-              <thead className="bg-gray-50 text-gray-500 text-[10px] font-black uppercase tracking-widest border-b border-gray-100">
-                <tr>
-                  <th className="px-6 py-4">التاريخ</th>
-                  <th className="px-6 py-4">المفتش</th>
-                  <th className="px-6 py-4">البند</th>
-                  <th className="px-6 py-4 text-center">الحالة</th>
-                  <th className="px-6 py-4 text-center">العدد</th>
-                  <th className="px-6 py-4">ملاحظات</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-50">
-                {records.length > 0 ? records.map(record => (
-                  <tr key={record.id} className="hover:bg-blue-50/30 transition-colors group">
-                    <td className="px-6 py-4 text-xs font-bold text-gray-500">{record.date}</td>
-                    <td className="px-6 py-4 text-sm font-black text-gray-700">{record.inspector_name}</td>
-                    <td className="px-6 py-4">
-                      <p className="font-black text-xs text-slate-800">{record.sub_item}</p>
-                      <span className="text-[10px] text-blue-400 font-bold">{record.main_item} | {record.code}</span>
-                    </td>
-                    <td className="px-6 py-4 text-center">
-                       <span className={`px-3 py-1 rounded-full text-[9px] font-black uppercase ${
-                         record.status === 'approved' ? 'bg-emerald-100 text-emerald-600' : 'bg-orange-100 text-orange-600'
-                       }`}>
-                         {record.status === 'approved' ? 'معتمد' : 'معلق'}
-                       </span>
-                    </td>
-                    <td className="px-6 py-4 text-center font-black text-blue-600 text-lg">{record.count}</td>
-                    <td className="px-6 py-4 text-[10px] text-gray-400 max-w-xs truncate font-bold italic">{record.notes || '-'}</td>
-                  </tr>
-                )) : (
-                  <tr>
-                    <td colSpan={6} className="p-20 text-center text-gray-300 font-black">لا توجد سجلات مطابقة للبحث</td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
+      {/* Compact Filters */}
+      <div className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100 no-print grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3 items-end">
+        {userRole === 'admin' && (
+          <div className="space-y-1">
+            <label className="text-[9px] font-black text-gray-400 uppercase mr-1">المفتش</label>
+            <input type="text" placeholder="الاسم..." className="w-full bg-gray-50 border border-gray-100 rounded-lg p-2 text-[10px] font-bold" value={filters.employee} onChange={e => handleFilterChange('employee', e.target.value)} />
           </div>
+        )}
+        <div className="space-y-1">
+          <label className="text-[9px] font-black text-gray-400 uppercase mr-1">البند</label>
+          <input type="text" placeholder="البند الفرعي..." className="w-full bg-gray-50 border border-gray-100 rounded-lg p-2 text-[10px] font-bold" value={filters.sub_item} onChange={e => handleFilterChange('sub_item', e.target.value)} />
+        </div>
+        <div className="space-y-1">
+          <label className="text-[9px] font-black text-gray-400 uppercase mr-1">الحالة</label>
+          <select className="w-full bg-gray-50 border border-gray-100 rounded-lg p-2 text-[10px] font-bold" value={filters.status} onChange={e => handleFilterChange('status', e.target.value)}>
+            <option value="">الكل</option>
+            <option value="approved">معتمد</option>
+            <option value="pending">معلق</option>
+          </select>
+        </div>
+        <div className="space-y-1">
+          <label className="text-[9px] font-black text-gray-400 uppercase mr-1">الفترة</label>
+          <div className="grid grid-cols-2 gap-1">
+             <input type="date" className="bg-gray-50 border border-gray-100 rounded-lg p-2 text-[10px] font-bold" value={filters.dateFrom} onChange={e => handleFilterChange('dateFrom', e.target.value)} />
+             <input type="date" className="bg-gray-50 border border-gray-100 rounded-lg p-2 text-[10px] font-bold" value={filters.dateTo} onChange={e => handleFilterChange('dateTo', e.target.value)} />
+          </div>
+        </div>
+        <div className="flex gap-1 h-9">
+           <button onClick={loadRecords} className="flex-1 bg-blue-600 text-white rounded-lg text-[10px] font-black uppercase">فلترة</button>
+           <button onClick={clearFilters} className="bg-gray-100 text-gray-400 px-3 rounded-lg text-[10px] font-black">X</button>
+        </div>
+      </div>
+
+      <div className="space-y-2">
+        {loading ? (
+          <div className="p-10 text-center"><i className="fas fa-spinner fa-spin text-blue-600"></i></div>
+        ) : records.length > 0 ? (
+          records.map(record => (
+            <div key={record.id} className="bg-white p-3 rounded-xl border border-gray-100 flex items-center justify-between hover:bg-slate-50 transition-colors">
+               <div className="flex-1 overflow-hidden ml-4">
+                  <div className="flex items-center gap-2 mb-0.5">
+                     <span className={`w-1.5 h-1.5 rounded-full ${record.status === 'approved' ? 'bg-emerald-500' : 'bg-orange-500'}`}></span>
+                     <p className="font-black text-slate-800 text-[11px] truncate">{record.sub_item}</p>
+                  </div>
+                  <p className="text-[9px] text-gray-400 font-bold">
+                    {record.inspector_name} • {record.date} • {record.code}
+                  </p>
+               </div>
+               <div className="flex items-center gap-4">
+                  <div className="text-center bg-blue-50 px-3 py-1 rounded-lg border border-blue-100">
+                     <p className="text-[10px] font-black text-blue-600 leading-none">{record.count}</p>
+                     <p className="text-[7px] font-bold text-blue-400 uppercase mt-0.5">العدد</p>
+                  </div>
+                  <span className={`hidden sm:inline-block px-2 py-0.5 rounded text-[8px] font-black uppercase ${
+                    record.status === 'approved' ? 'bg-emerald-50 text-emerald-600' : 'bg-orange-50 text-orange-600'
+                  }`}>
+                    {record.status === 'approved' ? 'معتمد' : 'معلق'}
+                  </span>
+               </div>
+            </div>
+          ))
+        ) : (
+          <div className="p-20 text-center text-gray-300 font-black text-xs uppercase tracking-widest">لا توجد سجلات</div>
         )}
       </div>
     </div>

@@ -76,6 +76,7 @@ const App: React.FC = () => {
   };
 
   const handleLogout = () => {
+    if (!confirm('هل تريد تسجيل الخروج؟')) return;
     setUser(null);
     localStorage.removeItem('app_user');
     setActiveTab('dashboard');
@@ -158,38 +159,44 @@ const App: React.FC = () => {
       {/* Main Content Area */}
       <main className="flex-1 overflow-y-auto custom-scrollbar relative flex flex-col">
         {/* Header */}
-        <header className="bg-white border-b border-gray-100 p-4 flex justify-between items-center sticky top-0 z-40">
-          <div className="flex items-center gap-4">
-            <button onClick={() => setSidebarOpen(!isSidebarOpen)} className="lg:hidden text-gray-500 p-2">
+        <header className="bg-white border-b border-gray-100 p-3 flex justify-between items-center sticky top-0 z-40">
+          <div className="flex items-center gap-3">
+            <button onClick={() => setSidebarOpen(!isSidebarOpen)} className="lg:hidden text-gray-400 p-2 hover:bg-gray-50 rounded-lg">
               <i className="fas fa-bars"></i>
             </button>
-            <div className="hidden lg:flex items-center gap-2">
+            <div className="flex items-center gap-2">
+               <div className="w-8 h-8 bg-blue-600 rounded-lg lg:hidden flex items-center justify-center text-white text-xs shadow-md">
+                 <i className="fas fa-shield-halved"></i>
+               </div>
                {isOnline ? (
-                 <span className="bg-emerald-100 text-emerald-600 px-3 py-1 rounded-full text-[10px] font-black flex items-center gap-1">
-                   <span className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-pulse"></span> متصل
+                 <span className="bg-emerald-50 text-emerald-600 px-2 py-0.5 rounded-full text-[9px] font-black flex items-center gap-1">
+                   <span className="w-1 h-1 bg-emerald-500 rounded-full animate-pulse"></span> متصل
                  </span>
                ) : (
-                 <span className="bg-red-100 text-red-600 px-3 py-1 rounded-full text-[10px] font-black flex items-center gap-1">
-                   <span className="w-1.5 h-1.5 bg-red-500 rounded-full"></span> غير متصل
+                 <span className="bg-red-50 text-red-600 px-2 py-0.5 rounded-full text-[9px] font-black flex items-center gap-1">
+                   <span className="w-1 h-1 bg-red-500 rounded-full"></span> غير متصل
                  </span>
                )}
-               {isSyncing && <span className="text-[10px] text-blue-500 font-bold animate-bounce"><i className="fas fa-sync fa-spin"></i> جارِ المزامنة...</span>}
             </div>
           </div>
           
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2">
             <NotificationSystem user={user} onNavigate={(tab) => setActiveTab(tab)} />
-            <button onClick={() => setShowProfileModal(true)} className="hidden md:flex items-center gap-3 p-1.5 pr-4 bg-gray-50 rounded-2xl hover:bg-gray-100 transition-all border border-gray-100">
-               <span className="font-black text-gray-800 text-xs">{user.fullName}</span>
-               <div className="w-8 h-8 bg-blue-600 rounded-xl flex items-center justify-center text-white text-[10px] font-black">
+            <button onClick={() => setShowProfileModal(true)} className="flex items-center gap-2 p-1 pr-3 bg-gray-50 rounded-xl hover:bg-gray-100 transition-all border border-gray-100">
+               <span className="font-black text-gray-700 text-[11px] hidden sm:inline">{user.fullName}</span>
+               <div className="w-7 h-7 bg-blue-600 rounded-lg flex items-center justify-center text-white text-[10px] font-black shadow-sm">
                   {user.fullName.charAt(0)}
                </div>
+            </button>
+            {/* Logout Button Visible on Mobile Header */}
+            <button onClick={handleLogout} className="lg:hidden w-9 h-9 flex items-center justify-center text-red-400 bg-red-50 rounded-xl border border-red-100">
+               <i className="fas fa-right-from-bracket text-xs"></i>
             </button>
           </div>
         </header>
 
-        <div className="p-4 lg:p-8 max-w-[1400px] mx-auto w-full flex-1">
-          <div className="animate-in fade-in slide-in-from-top-4 duration-500 pb-20 lg:pb-0">
+        <div className="p-3 lg:p-6 max-w-[1400px] mx-auto w-full flex-1">
+          <div className="animate-in fade-in slide-in-from-top-2 duration-300 pb-20 lg:pb-0">
             {activeTab === 'dashboard' && <Dashboard userRole={user.role} userId={user.id} />}
             {activeTab === 'form' && <EvaluationForm onSaved={() => setActiveTab('records')} currentUser={user} />}
             {activeTab === 'records' && <RecordsList userRole={user.role} userId={user.id} />}
@@ -202,43 +209,44 @@ const App: React.FC = () => {
         {/* Profile Modal */}
         {showProfileModal && (
           <div className="fixed inset-0 z-[100] flex items-center justify-center p-6 bg-slate-900/60 backdrop-blur-sm">
-             <div className="bg-white w-full max-w-sm rounded-[3rem] p-10 space-y-6 shadow-2xl animate-in zoom-in duration-200">
+             <div className="bg-white w-full max-w-xs rounded-3xl p-6 space-y-6 shadow-2xl animate-in zoom-in duration-200">
                 <div className="text-center">
-                   <div className="w-20 h-20 bg-blue-600 text-white rounded-3xl mx-auto flex items-center justify-center text-3xl shadow-lg mb-6"><i className="fas fa-user-shield"></i></div>
-                   <h4 className="text-xl font-black text-gray-800">{user.fullName}</h4>
-                   <p className="text-xs font-bold text-gray-400 uppercase mt-1">تحديث البيانات</p>
+                   <div className="w-16 h-16 bg-blue-600 text-white rounded-2xl mx-auto flex items-center justify-center text-2xl shadow-lg mb-4"><i className="fas fa-user-shield"></i></div>
+                   <h4 className="text-sm font-black text-gray-800">{user.fullName}</h4>
+                   <p className="text-[10px] font-bold text-gray-400 uppercase">تحديث الملف الشخصي</p>
                 </div>
                 <div className="space-y-4">
-                   <div className="space-y-2">
-                      <label className="text-[10px] font-black text-gray-400 mr-2 uppercase">تغيير كلمة السر</label>
+                   <div className="space-y-1.5">
+                      <label className="text-[10px] font-black text-gray-400 mr-1 uppercase">كلمة السر الجديدة</label>
                       <input 
                          type="text" 
                          value={newPass} 
                          onChange={e => setNewPass(e.target.value)} 
-                         className="w-full bg-gray-50 border-2 border-gray-100 rounded-2xl p-4 font-bold text-center text-lg text-blue-600" 
-                         placeholder="كلمة السر الجديدة" 
+                         className="w-full bg-gray-50 border border-gray-100 rounded-xl p-3 font-bold text-center text-sm text-blue-600" 
+                         placeholder="••••••••" 
                        />
                    </div>
                 </div>
-                <div className="flex gap-3">
-                   <button disabled={isUpdatingPass} onClick={handleChangeOwnPassword} className="flex-1 bg-blue-600 text-white py-4 rounded-2xl font-black shadow-lg shadow-blue-500/20">حفظ</button>
-                   <button onClick={() => setShowProfileModal(false)} className="flex-1 bg-gray-100 text-gray-400 py-4 rounded-2xl font-black">إغلاق</button>
+                <div className="space-y-2">
+                   <button disabled={isUpdatingPass} onClick={handleChangeOwnPassword} className="w-full bg-blue-600 text-white py-3 rounded-xl font-black text-xs shadow-lg shadow-blue-500/10">حفظ التغييرات</button>
+                   <button onClick={handleLogout} className="w-full bg-red-50 text-red-600 py-3 rounded-xl font-black text-xs border border-red-100">تسجيل الخروج</button>
+                   <button onClick={() => setShowProfileModal(false)} className="w-full text-gray-400 py-2 rounded-xl font-black text-[10px]">إغلاق</button>
                 </div>
              </div>
           </div>
         )}
 
         {/* Mobile Bottom Navigation */}
-        <nav className="lg:hidden fixed bottom-0 left-0 right-0 bg-white/90 backdrop-blur-xl border-t border-gray-100 flex justify-around items-center p-2 pb-safe z-50">
+        <nav className="lg:hidden fixed bottom-0 left-0 right-0 bg-white/95 backdrop-blur-md border-t border-gray-100 flex justify-around items-center p-2 pb-safe z-50">
           {navItems.slice(0, 4).map(item => (
             <button
               key={item.id}
               onClick={() => setActiveTab(item.id)}
               className={`flex flex-col items-center gap-1 p-2 min-w-[60px] transition-all ${
-                activeTab === item.id ? 'text-blue-600 scale-110' : 'text-gray-400'
+                activeTab === item.id ? 'text-blue-600' : 'text-gray-400'
               }`}
             >
-              <i className={`fas ${item.icon} text-lg`}></i>
+              <i className={`fas ${item.icon} text-base`}></i>
               <span className="text-[9px] font-black">{item.label}</span>
             </button>
           ))}
@@ -246,11 +254,11 @@ const App: React.FC = () => {
             <button
               onClick={() => setActiveTab('settings')}
               className={`flex flex-col items-center gap-1 p-2 min-w-[60px] transition-all ${
-                activeTab === 'settings' ? 'text-blue-600 scale-110' : 'text-gray-400'
+                activeTab === 'settings' ? 'text-blue-600' : 'text-gray-400'
               }`}
             >
-              <i className="fas fa-cog text-lg"></i>
-              <span className="text-[9px] font-black">الإعدادات</span>
+              <i className="fas fa-cog text-base"></i>
+              <span className="text-[9px] font-black">الإدارة</span>
             </button>
           )}
         </nav>

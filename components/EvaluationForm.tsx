@@ -12,9 +12,7 @@ const EvaluationForm: React.FC<EvaluationFormProps> = ({ onSaved, currentUser })
   const [itemsDB, setItemsDB] = useState<EvaluationItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
-  const [isOffline, setIsOffline] = useState(!navigator.onLine);
   
-  // Suggestion State
   const [showSuggestModal, setShowSuggestModal] = useState(false);
   const [suggestForm, setSuggestForm] = useState({ sub_item: '', main_item: 'تفتيش ميداني', code: '' });
   const [activeCardIdForSuggest, setActiveCardIdForSuggest] = useState<number | null>(null);
@@ -29,21 +27,33 @@ const EvaluationForm: React.FC<EvaluationFormProps> = ({ onSaved, currentUser })
   }]);
 
   useEffect(() => {
-    const handleOnline = () => setIsOffline(false);
-    const handleOffline = () => setIsOffline(true);
-    window.addEventListener('online', handleOnline);
-    window.addEventListener('offline', handleOffline);
     loadItems();
-    return () => {
-      window.removeEventListener('online', handleOnline);
-      window.removeEventListener('offline', handleOffline);
+    const handleClickOutside = (event: MouseEvent) => {
+      Object.keys(searchRefs.current).forEach(id => {
+        if (searchRefs.current[Number(id)] && !searchRefs.current[Number(id)]?.contains(event.target as Node)) {
+          setIsSearchOpen(prev => ({ ...prev, [Number(id)]: false }));
+        }
+      });
     };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
   const loadItems = async () => {
     const items = await supabaseService.getItems();
     setItemsDB(items);
     setLoading(false);
+  };
+
+  const normalizeArabic = (text: string) => {
+    if (!text) return '';
+    return text
+      .trim()
+      .replace(/[أإآا]/g, 'ا')
+      .replace(/ة/g, 'ه')
+      .replace(/[ىي]/g, 'ي')
+      .replace(/[\u064B-\u0652]/g, '') // حذف التشكيل
+      .toLowerCase();
   };
 
   const handleSelectItem = (cardId: number, item: EvaluationItem) => {
@@ -61,10 +71,8 @@ const EvaluationForm: React.FC<EvaluationFormProps> = ({ onSaved, currentUser })
   };
 
   const handleSaveSuggest = async () => {
-    if (!suggestForm.sub_item || !suggestForm.code) return alert('يرجى كتابة الاسم والكود المقترح');
+    if (!suggestForm.sub_item) return alert('يرجى كتابة الاسم المقترح');
     setIsSaving(true);
-    
-    // حفظ البند كبند مقترح (Pending)
     const res = await supabaseService.saveItem({
       ...suggestForm,
       department: currentUser.department || 'الجنوب',
@@ -80,38 +88,32 @@ const EvaluationForm: React.FC<EvaluationFormProps> = ({ onSaved, currentUser })
         handleSelectItem(activeCardIdForSuggest, newItem);
       }
       setShowSuggestModal(false);
-      alert('✅ تم إضافة البند كمقترح، سيتم مراجعته واعتماده من قبل المدير.');
-    } else {
-      alert('❌ فشل إرسال الاقتراح');
     }
     setIsSaving(false);
   };
 
   const handleSave = async () => {
     setIsSaving(true);
-    const finalBatch: any[] = [];
-    const recordStatus = 'pending'; // دائماً بانتظار الاعتماد للمفتش
-
-    for (const card of cards) {
-      const item = itemsDB.find(i => i.id === card.itemId);
-      if (!item) continue;
-
-      finalBatch.push({
-        date,
-        inspector_id: currentUser.id,
-        inspector_name: currentUser.fullName,
-        item_id: item.id,
-        sub_item: item.sub_item,
-        main_item: item.main_item,
-        sub_type: card.subType,
-        code: item.code,
-        department: item.department,
-        count: card.count,
-        notes: card.notes,
-        answers: card.answers,
-        status: recordStatus
+    const finalBatch = cards
+      .filter(card => card.itemId)
+      .map(card => {
+        const item = itemsDB.find(i => i.id === card.itemId);
+        return {
+          date,
+          inspector_id: currentUser.id,
+          inspector_name: currentUser.fullName,
+          item_id: item?.id,
+          sub_item: item?.sub_item,
+          main_item: item?.main_item,
+          sub_type: card.subType,
+          code: item?.code,
+          department: item?.department || currentUser.department,
+          count: card.count,
+          notes: card.notes,
+          answers: card.answers,
+          status: 'pending'
+        };
       });
-    }
 
     if (finalBatch.length === 0) {
       setIsSaving(false);
@@ -121,99 +123,109 @@ const EvaluationForm: React.FC<EvaluationFormProps> = ({ onSaved, currentUser })
     const res = await supabaseService.saveBatchEvaluations(finalBatch);
     setIsSaving(false);
     if (res.success) {
-      alert(`✅ تم إرسال ${res.count} تقييمات بنجاح للمراجعة.`);
+      alert(`✅ تم الإرسال للمراجعة`);
       onSaved();
-    } else {
-      alert('❌ فشل الحفظ');
     }
   };
 
-  if (loading) return <div className="p-10 text-center"><i className="fas fa-circle-notch fa-spin text-3xl text-blue-600"></i></div>;
+  if (loading) return <div className="p-10 text-center"><i className="fas fa-circle-notch fa-spin text-2xl text-blue-600"></i></div>;
 
   return (
-    <div className="max-w-2xl mx-auto space-y-4 pb-40 px-2 lg:px-0">
-      <div className="bg-white p-6 rounded-[2rem] shadow-sm border border-gray-100 flex justify-between items-center">
-        <div className="flex-1 text-right">
-          <label className="block text-[10px] font-black text-gray-400 mb-1 uppercase">📅 تاريخ التقييم</label>
-          <input type="date" value={date} onChange={e => setDate(e.target.value)} className="w-full bg-gray-50 border-none rounded-2xl p-4 font-bold text-gray-800" />
+    <div className="max-w-2xl mx-auto space-y-2 pb-40 px-2">
+      {/* Date Bar - Compact */}
+      <div className="bg-white px-4 py-2 rounded-2xl shadow-sm border border-gray-100 flex items-center justify-between">
+        <div className="flex items-center gap-2">
+           <i className="fas fa-calendar-day text-blue-500 text-xs"></i>
+           <span className="text-[10px] font-black text-gray-400 uppercase">التاريخ</span>
         </div>
+        <input type="date" value={date} onChange={e => setDate(e.target.value)} className="bg-transparent border-none p-0 font-bold text-gray-800 text-xs focus:ring-0 text-left" />
       </div>
 
-      <div className="space-y-4">
+      <div className="space-y-2">
         {cards.map((card, index) => {
           const selectedItem = itemsDB.find(i => i.id === card.itemId);
           const currentQuery = searchQuery[card.id] || '';
+          const normalizedQuery = normalizeArabic(currentQuery);
+          
           const filtered = itemsDB.filter(i => 
-            i.sub_item.toLowerCase().includes(currentQuery.toLowerCase()) || 
-            i.code.toLowerCase().includes(currentQuery.toLowerCase())
+            normalizeArabic(i.sub_item).includes(normalizedQuery) || 
+            normalizeArabic(i.code).includes(normalizedQuery)
           ).slice(0, 10);
 
           return (
-            <div key={card.id} className="bg-white rounded-[2.5rem] shadow-sm border border-gray-100 overflow-hidden">
-              <div className="bg-slate-800 px-6 py-4 flex justify-between items-center text-white">
-                <span className="text-xs font-black">حركة تقييم #{index + 1}</span>
-                {cards.length > 1 && <button onClick={() => setCards(cards.filter(c => c.id !== card.id))}><i className="fas fa-times-circle"></i></button>}
+            <div key={card.id} className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+              <div className="bg-slate-50 px-4 py-2 flex justify-between items-center border-b border-gray-100">
+                <span className="text-[10px] font-black text-slate-500">الحركة #{index + 1}</span>
+                {cards.length > 1 && (
+                  <button onClick={() => setCards(cards.filter(c => c.id !== card.id))} className="text-gray-300 hover:text-red-500">
+                    <i className="fas fa-times-circle text-xs"></i>
+                  </button>
+                )}
               </div>
               
-              <div className="p-6 space-y-6">
+              <div className="p-3 space-y-3">
                 <div className="relative" ref={el => { searchRefs.current[card.id] = el; }}>
-                  <label className="block text-[10px] font-black text-gray-400 mb-2">📋 اختر البند (أو ابحث لإضافة جديد)</label>
                   <div 
                     onClick={() => setIsSearchOpen(prev => ({ ...prev, [card.id]: true }))}
-                    className="w-full bg-gray-50 border-2 border-transparent focus-within:border-blue-500 rounded-2xl p-4 transition-all flex items-center gap-3 cursor-pointer"
+                    className={`w-full bg-gray-50 border rounded-xl p-2.5 flex items-center gap-3 cursor-pointer transition-all ${isSearchOpen[card.id] ? 'border-blue-400 bg-white ring-2 ring-blue-50' : 'border-gray-100'}`}
                   >
-                    <i className="fas fa-search text-gray-300"></i>
+                    <i className="fas fa-search text-gray-300 text-[10px]"></i>
                     {selectedItem ? (
-                      <div className="flex-1 text-right">
-                        <p className="font-black text-slate-800 text-sm">{selectedItem.sub_item}</p>
-                        <p className="text-[10px] text-blue-500 font-bold">{selectedItem.code} {selectedItem.status === 'pending' && '(مقترح)'}</p>
+                      <div className="flex-1 text-right overflow-hidden">
+                        <p className="font-black text-slate-800 text-xs truncate">{selectedItem.sub_item}</p>
+                        <p className="text-[9px] text-blue-500 font-bold">{selectedItem.code}</p>
                       </div>
-                    ) : <p className="text-gray-400 text-sm">اضغط للبحث عن بند...</p>}
+                    ) : <p className="text-gray-400 text-[11px] font-medium">اختر البند الفرعي...</p>}
                   </div>
 
                   {isSearchOpen[card.id] && (
-                    <div className="absolute top-full left-0 right-0 z-50 bg-white border border-gray-100 rounded-2xl shadow-2xl mt-2 overflow-hidden">
-                      <div className="p-3 bg-gray-50">
+                    <div className="absolute top-full left-0 right-0 z-50 bg-white border border-gray-200 rounded-xl shadow-xl mt-1 overflow-hidden animate-in fade-in slide-in-from-top-1 duration-150">
+                      <div className="p-2 bg-gray-50 border-b border-gray-100">
                         <input 
                           autoFocus
                           type="text" 
                           placeholder="ابحث بالاسم أو الكود..."
-                          className="w-full bg-white border-2 border-blue-100 rounded-xl p-3 text-sm font-bold outline-none"
+                          className="w-full bg-white border border-gray-200 rounded-lg p-2 text-xs font-bold outline-none focus:border-blue-400"
                           value={currentQuery}
                           onChange={e => setSearchQuery(prev => ({ ...prev, [card.id]: e.target.value }))}
                         />
                       </div>
-                      <div className="max-h-[250px] overflow-y-auto">
-                        {filtered.map(item => (
-                          <div key={item.id} onClick={() => handleSelectItem(card.id, item)} className="p-4 hover:bg-blue-50 cursor-pointer border-b border-gray-50 flex justify-between">
+                      <div className="max-h-[180px] overflow-y-auto custom-scrollbar">
+                        {filtered.length > 0 ? filtered.map(item => (
+                          <div 
+                            key={item.id} 
+                            onClick={() => handleSelectItem(card.id, item)} 
+                            className="p-2.5 hover:bg-blue-50 cursor-pointer border-b border-gray-50 flex justify-between items-center group"
+                          >
                             <div className="text-right">
-                               <p className="font-black text-slate-700 text-xs">{item.sub_item}</p>
-                               <p className="text-[9px] text-gray-400">{item.main_item}</p>
+                               <p className="font-black text-slate-700 text-[11px] group-hover:text-blue-700">{item.sub_item}</p>
+                               <p className="text-[9px] text-gray-400">{item.main_item} | {item.code}</p>
                             </div>
-                            {item.status === 'pending' && <span className="bg-orange-100 text-orange-600 px-2 py-0.5 rounded text-[8px] font-black self-center">مقترح</span>}
+                            {item.status === 'pending' && <span className="bg-orange-50 text-orange-600 px-1.5 py-0.5 rounded text-[8px] font-black">مقترح</span>}
                           </div>
-                        ))}
-                        <div 
-                          onClick={() => handleQuickSuggest(card.id)}
-                          className="p-4 bg-blue-50 text-blue-600 font-black text-xs text-center cursor-pointer hover:bg-blue-100"
-                        >
-                          <i className="fas fa-plus-circle ml-2"></i>
-                          لم تجد البند؟ اضغط هنا لإضافته كمقترح
-                        </div>
+                        )) : (
+                          <div className="p-5 text-center">
+                            <p className="text-[10px] text-gray-400 font-bold mb-2">لا توجد نتائج</p>
+                            <button 
+                              onClick={() => handleQuickSuggest(card.id)}
+                              className="bg-blue-600 text-white px-4 py-1.5 rounded-lg font-black text-[10px]"
+                            >
+                              إضافة "{currentQuery}" كمقترح
+                            </button>
+                          </div>
+                        )}
                       </div>
                     </div>
                   )}
                 </div>
 
                 {selectedItem && (
-                  <div className="flex items-center gap-4 bg-blue-50/30 p-4 rounded-2xl">
-                    <div className="flex-1 text-right">
-                        <label className="block text-[10px] font-black text-blue-600 mb-1">🔢 العدد المنجز</label>
-                    </div>
-                    <div className="flex items-center gap-3 bg-white p-1 rounded-xl shadow-sm">
-                        <button onClick={() => setCards(cards.map(c => c.id === card.id ? {...c, count: Math.max(1, c.count - 1)} : c))} className="w-10 h-10 flex items-center justify-center text-red-400"><i className="fas fa-minus"></i></button>
-                        <span className="w-12 text-center font-black text-lg">{card.count}</span>
-                        <button onClick={() => setCards(cards.map(c => c.id === card.id ? {...c, count: c.count + 1} : c))} className="w-10 h-10 flex items-center justify-center text-blue-500"><i className="fas fa-plus"></i></button>
+                  <div className="flex items-center justify-between bg-blue-50/30 p-2.5 rounded-xl border border-blue-100/50">
+                    <span className="text-[11px] font-black text-blue-700">الكمية/العدد</span>
+                    <div className="flex items-center gap-2 bg-white p-1 rounded-lg shadow-sm border border-blue-100">
+                        <button onClick={() => setCards(cards.map(c => c.id === card.id ? {...c, count: Math.max(1, c.count - 1)} : c))} className="w-7 h-7 flex items-center justify-center text-red-400 hover:bg-red-50 rounded"><i className="fas fa-minus text-[10px]"></i></button>
+                        <span className="w-6 text-center font-black text-sm text-slate-800">{card.count}</span>
+                        <button onClick={() => setCards(cards.map(c => c.id === card.id ? {...c, count: c.count + 1} : c))} className="w-7 h-7 flex items-center justify-center text-blue-500 hover:bg-blue-50 rounded"><i className="fas fa-plus text-[10px]"></i></button>
                     </div>
                   </div>
                 )}
@@ -223,42 +235,30 @@ const EvaluationForm: React.FC<EvaluationFormProps> = ({ onSaved, currentUser })
         })}
       </div>
 
-      <div className="fixed bottom-20 lg:bottom-10 left-4 right-4 flex gap-3 z-50">
-        <button onClick={() => setCards([...cards, { id: Date.now(), itemId: '', count: 1, subType: '', notes: '', answers: {}, generatedEvals: [] }])} className="flex-1 bg-white text-blue-600 border-2 border-blue-600 p-4 rounded-2xl font-black shadow-xl">إضافة حركة أخرى</button>
-        <button onClick={handleSave} disabled={isSaving} className="flex-[2] bg-blue-600 text-white p-4 rounded-2xl font-black shadow-xl">
-           {isSaving ? <i className="fas fa-spinner fa-spin"></i> : <i className="fas fa-paper-plane ml-2"></i>}
+      <div className="fixed bottom-20 lg:bottom-6 left-4 right-4 flex gap-2 z-50">
+        <button onClick={() => setCards([...cards, { id: Date.now(), itemId: '', count: 1, subType: '', notes: '', answers: {}, generatedEvals: [] }])} className="flex-1 bg-white text-slate-700 border border-gray-200 py-3 rounded-xl font-black shadow-lg text-xs flex items-center justify-center gap-2">
+          <i className="fas fa-plus"></i> إضافة بند
+        </button>
+        <button onClick={handleSave} disabled={isSaving} className="flex-[2] bg-blue-600 text-white py-3 rounded-xl font-black shadow-xl text-xs flex items-center justify-center gap-2">
+           {isSaving ? <i className="fas fa-spinner fa-spin"></i> : <i className="fas fa-paper-plane"></i>}
            إرسال للتقييم
         </button>
       </div>
 
-      {/* Suggest Modal */}
+      {/* Suggest Modal - Compact */}
       {showSuggestModal && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-6 bg-slate-900/60 backdrop-blur-sm">
-           <div className="bg-white w-full max-w-sm rounded-[3rem] p-8 space-y-6 shadow-2xl animate-in zoom-in duration-200">
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
+           <div className="bg-white w-full max-w-xs rounded-2xl p-5 space-y-4 shadow-2xl">
               <div className="text-center">
-                 <div className="w-16 h-16 bg-blue-50 text-blue-600 rounded-full flex items-center justify-center text-2xl mx-auto mb-4"><i className="fas fa-lightbulb"></i></div>
-                 <h4 className="text-lg font-black text-gray-800">اقتراح بند جديد</h4>
-                 <p className="text-[10px] font-bold text-gray-400 uppercase mt-1">سيتم إرسال هذا الاسم للمدير لاعتماده كبند دائم</p>
+                 <h4 className="text-xs font-black text-gray-800 uppercase tracking-widest">اقتراح بند جديد</h4>
               </div>
-              <div className="space-y-4">
-                 <input 
-                   type="text" 
-                   value={suggestForm.sub_item} 
-                   onChange={e => setSuggestForm({...suggestForm, sub_item: e.target.value})}
-                   className="w-full bg-gray-50 border-2 border-gray-100 rounded-2xl p-4 font-bold text-right text-sm"
-                   placeholder="اسم البند المقترح"
-                 />
-                 <input 
-                   type="text" 
-                   value={suggestForm.code} 
-                   onChange={e => setSuggestForm({...suggestForm, code: e.target.value})}
-                   className="w-full bg-gray-50 border-2 border-gray-100 rounded-2xl p-4 font-bold text-right text-sm"
-                   placeholder="كود البند (مثال: FR-22)"
-                 />
+              <div className="space-y-2">
+                 <input type="text" value={suggestForm.sub_item} onChange={e => setSuggestForm({...suggestForm, sub_item: e.target.value})} className="w-full bg-gray-50 border border-gray-200 rounded-lg p-2.5 font-bold text-right text-xs" placeholder="اسم البند" />
+                 <input type="text" value={suggestForm.code} onChange={e => setSuggestForm({...suggestForm, code: e.target.value})} className="w-full bg-gray-50 border border-gray-200 rounded-lg p-2.5 font-bold text-right text-xs" placeholder="الكود (اختياري)" />
               </div>
-              <div className="flex gap-3">
-                 <button onClick={handleSaveSuggest} disabled={isSaving} className="flex-1 bg-blue-600 text-white py-4 rounded-2xl font-black shadow-lg">تأكيد الاقتراح</button>
-                 <button onClick={() => setShowSuggestModal(false)} className="flex-1 bg-gray-100 text-gray-400 py-4 rounded-2xl font-black">إلغاء</button>
+              <div className="flex gap-2">
+                 <button onClick={handleSaveSuggest} disabled={isSaving} className="flex-1 bg-blue-600 text-white py-2.5 rounded-lg font-black text-[10px]">تأكيد</button>
+                 <button onClick={() => setShowSuggestModal(false)} className="flex-1 bg-gray-100 text-gray-400 py-2.5 rounded-lg font-black text-[10px]">إلغاء</button>
               </div>
            </div>
         </div>
