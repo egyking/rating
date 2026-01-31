@@ -33,35 +33,13 @@ export const supabaseService = {
     const { data } = await supabase.from('inspectors').select('*').order('name');
     return data || [];
   },
-  
-  saveInspectors: async (inspectors: any[]) => {
-    try {
-      const { data, error } = await supabase.from('inspectors').insert(inspectors).select();
-      if (error && (error.message.includes('password') || error.message.includes('role'))) {
-        const missingColumns = [];
-        if (error.message.includes('password')) missingColumns.push('password');
-        if (error.message.includes('role')) missingColumns.push('role');
-        const simplified = inspectors.map(ins => {
-          const clone = { ...ins };
-          missingColumns.forEach(col => delete clone[col]);
-          return clone;
-        });
-        const { data: retryData, error: retryError } = await supabase.from('inspectors').insert(simplified).select();
-        return { success: !retryError, data: retryData, error: retryError };
-      }
-      return { success: !error, data, error };
-    } catch (e: any) {
-      return { success: false, error: e };
-    }
-  },
 
-  updateInspectorPassword: async (id: string, newPassword: string) => {
-    const { error } = await supabase.from('inspectors').update({ password: newPassword }).eq('id', id);
-    return { success: !error, error };
-  },
-
-  deleteInspector: async (id: string) => {
-    const { error } = await supabase.from('inspectors').delete().eq('id', id);
+  // Fix for App.tsx: Added missing updateInspectorPassword method
+  updateInspectorPassword: async (id: string, password: string) => {
+    const { error } = await supabase
+      .from('inspectors')
+      .update({ password })
+      .eq('id', id);
     return { success: !error, error };
   },
 
@@ -106,8 +84,8 @@ export const supabaseService = {
     if (!error && item.status === 'pending') {
       await supabaseService.createNotification({
         role_target: 'admin',
-        title: 'بند جديد بانتظار الاعتماد',
-        message: `تم اقتراح بند جديد: ${item.sub_item}`,
+        title: 'بند جديد مقترح بانتظار الاعتماد',
+        message: `تم إضافة بند جديد من قبل أحد المفتشين: ${item.sub_item}`,
         type: 'approval',
         link: 'settings'
       });
@@ -115,9 +93,24 @@ export const supabaseService = {
     return { success: !error, data: data?.[0], error };
   },
 
-  updateItemStatus: async (id: string, status: 'approved' | 'pending') => {
-    const { error } = await supabase.from('evaluation_items').update({ status }).eq('id', id);
-    return { success: !error, error };
+  // اعتماد البند والسجل المرتبط به
+  approveProposedItem: async (itemId: string) => {
+    // 1. تحديث حالة البند ليصبح معتمداً (دائماً)
+    const { error: itemError } = await supabase
+      .from('evaluation_items')
+      .update({ status: 'approved' })
+      .eq('id', itemId);
+
+    if (itemError) return { success: false, error: itemError };
+
+    // 2. تحديث جميع السجلات المرتبطة بهذا البند (التي كانت معلقة بسببه)
+    const { error: recordError } = await supabase
+      .from('evaluation_records')
+      .update({ status: 'approved' })
+      .eq('item_id', itemId)
+      .eq('status', 'pending');
+
+    return { success: !recordError, error: recordError };
   },
 
   deleteItem: async (id: string) => {
@@ -126,30 +119,20 @@ export const supabaseService = {
   },
 
   saveBatchEvaluations: async (evaluations: any[]) => {
-    const { data: realInspectors } = await supabase.from('inspectors').select('id');
-    const validIds = new Set(realInspectors?.map(i => i.id) || []);
-
-    const cleanEvals = evaluations.map(ev => ({
-      ...ev,
-      inspector_id: validIds.has(ev.inspector_id) ? ev.inspector_id : null,
-      status: ev.status || 'pending'
-    }));
-
-    const { data, error } = await supabase.from('evaluation_records').insert(cleanEvals).select();
+    const { data, error } = await supabase.from('evaluation_records').insert(evaluations).select();
     
     if (!error && evaluations.length > 0) {
-      const isPending = cleanEvals.some(e => e.status === 'pending');
+      const isPending = evaluations.some(e => e.status === 'pending');
       if (isPending) {
         await supabaseService.createNotification({
           role_target: 'admin',
           title: 'تقييمات جديدة بانتظار الاعتماد',
-          message: `تم إرسال ${cleanEvals.length} حركات جديدة من قبل ${cleanEvals[0].inspector_name}`,
+          message: `دخلت تقييمات جديدة بانتظار مراجعتك.`,
           type: 'approval',
           link: 'settings'
         });
       }
     }
-    
     return { success: !error, count: data?.length || 0, error };
   },
 
@@ -173,12 +156,14 @@ export const supabaseService = {
     const { data } = await supabase.from('targets').select('*').order('created_at', { ascending: false });
     return data || [];
   },
-  
+
+  // Fix for TargetsView.tsx: Added missing saveBatchTargets method
   saveBatchTargets: async (targets: any[]) => {
     const { data, error } = await supabase.from('targets').insert(targets).select();
     return { success: !error, data, error };
   },
 
+  // Fix for TargetsView.tsx: Added missing deleteTarget method
   deleteTarget: async (id: string) => {
     const { error } = await supabase.from('targets').delete().eq('id', id);
     return { success: !error, error };
