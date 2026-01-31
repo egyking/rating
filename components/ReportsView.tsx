@@ -3,10 +3,10 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { supabaseService } from '../supabase';
 import { reportAnalytics } from '../services/reportAnalytics';
 import { exportToExcel, exportDeepReport, printReport } from '../services/exportService';
-import { EvaluationRecord, Inspector, Target, AdvancedPerformanceMetric, ItemPerformance, ComparativeMatrixRow } from '../types';
+import { EvaluationRecord, Inspector, Target, AdvancedPerformanceMetric, ItemPerformance, ComparativeMatrixRow, KPIMetric } from '../types';
 import { 
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, 
-  PieChart, Pie, Cell, Legend, AreaChart, Area, ComposedChart, Line
+  AreaChart, Area
 } from 'recharts';
 
 interface ReportsViewProps {
@@ -14,11 +14,9 @@ interface ReportsViewProps {
   userId: string;
 }
 
-const COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#06b6d4', '#f97316'];
-
 const ReportsView: React.FC<ReportsViewProps> = ({ userRole, userId }) => {
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<'personal' | 'matrix' | 'items' | 'risk'>('personal');
+  const [activeTab, setActiveTab] = useState<'overview' | 'personal' | 'matrix' | 'items' | 'risk'>('overview');
   
   // Data State
   const [allRecords, setAllRecords] = useState<EvaluationRecord[]>([]);
@@ -57,9 +55,14 @@ const ReportsView: React.FC<ReportsViewProps> = ({ userRole, userId }) => {
     });
   }, [allRecords, dateFrom, dateTo, selectedInspectorId]);
 
-  // 1. Personal Deep Metric (For Selected Inspector or Logged In User)
+  // 0. General KPIs (Restored)
+  const globalKPIs: KPIMetric[] = useMemo(() => {
+     return reportAnalytics.calculateGlobalKPIs(filteredRecords);
+  }, [filteredRecords]);
+
+  // 1. Personal Deep Metric
   const personalMetric: AdvancedPerformanceMetric | null = useMemo(() => {
-    const targetId = selectedInspectorId === 'all' ? userId : selectedInspectorId; // If all, show current user's personal in tab, or aggregate?
+    const targetId = selectedInspectorId === 'all' ? userId : selectedInspectorId; 
     const inspector = inspectors.find(i => i.id === targetId);
     if (!inspector) return null;
     return reportAnalytics.generateInspectorPerformance(filteredRecords, inspector, targets, dateFrom, dateTo);
@@ -92,9 +95,9 @@ const ReportsView: React.FC<ReportsViewProps> = ({ userRole, userId }) => {
       <div className="bg-white p-6 rounded-[2rem] shadow-sm border border-gray-100 flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4 no-print">
         <div className="space-y-1">
           <h2 className="text-xl font-black text-slate-800 flex items-center gap-2">
-            <i className="fas fa-chart-pie text-blue-600"></i> تقارير الأداء المتقدمة
+            <i className="fas fa-chart-pie text-blue-600"></i> التقارير والتحليلات
           </h2>
-          <p className="text-[11px] text-gray-400 font-bold">نظام تقييم الأداء الموزون وتحليل المخاطر</p>
+          <p className="text-[11px] text-gray-400 font-bold">مركز البيانات الشامل</p>
         </div>
 
         <div className="flex flex-wrap items-center gap-3 w-full lg:w-auto">
@@ -127,18 +130,61 @@ const ReportsView: React.FC<ReportsViewProps> = ({ userRole, userId }) => {
 
       {/* --- Tabs --- */}
       <div className="flex gap-2 p-1 bg-gray-100/50 rounded-2xl w-fit no-print overflow-x-auto">
+        <TabButton active={activeTab === 'overview'} onClick={() => setActiveTab('overview')} label="نظرة عامة" icon="fa-chart-simple" />
         <TabButton active={activeTab === 'personal'} onClick={() => setActiveTab('personal')} label="التقرير الفردي" icon="fa-user-chart" />
-        {userRole === 'admin' && <TabButton active={activeTab === 'matrix'} onClick={() => setActiveTab('matrix')} label="مصفوفة المقارنة" icon="fa-table-columns" />}
+        {userRole === 'admin' && <TabButton active={activeTab === 'matrix'} onClick={() => setActiveTab('matrix')} label="مصفوفة الفريق" icon="fa-table-columns" />}
         {userRole === 'admin' && <TabButton active={activeTab === 'risk'} onClick={() => setActiveTab('risk')} label="تحليل المخاطر" icon="fa-triangle-exclamation" />}
         <TabButton active={activeTab === 'items'} onClick={() => setActiveTab('items')} label="تحليل البنود" icon="fa-list-check" />
       </div>
 
       <div className="animate-in fade-in duration-500">
         
+        {/* === 0. Overview / General Tab (Restored) === */}
+        {activeTab === 'overview' && (
+           <div className="space-y-6">
+              {/* KPI Cards */}
+              <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+                {globalKPIs.map((kpi, idx) => (
+                  <div key={idx} className="bg-white p-5 rounded-[2rem] shadow-sm border border-gray-100 flex items-center gap-4 relative overflow-hidden group">
+                    <div className={`absolute right-0 top-0 bottom-0 w-1.5 bg-${kpi.color}-500`}></div>
+                    <div className={`w-12 h-12 rounded-2xl flex items-center justify-center bg-${kpi.color}-50 text-${kpi.color}-500 text-xl group-hover:scale-110 transition-transform`}>
+                       <i className={`fas ${kpi.icon}`}></i>
+                    </div>
+                    <div>
+                       <p className="text-[10px] font-black text-gray-400 uppercase tracking-wider">{kpi.label}</p>
+                       <p className="text-2xl font-black text-slate-800">{kpi.value}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              {/* Main Trend Chart */}
+              <div className="bg-white p-6 rounded-[2.5rem] shadow-sm border border-gray-100">
+                  <h3 className="text-sm font-black text-slate-800 mb-6 flex items-center gap-2"><i className="fas fa-chart-line text-blue-500"></i> النشاط العام للفترة</h3>
+                  <div className="h-[300px]">
+                      <ResponsiveContainer width="100%" height="100%">
+                          <AreaChart data={trendData}>
+                              <defs>
+                                  <linearGradient id="colorTrendOverview" x1="0" y1="0" x2="0" y2="1">
+                                      <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.3}/>
+                                      <stop offset="95%" stopColor="#3b82f6" stopOpacity={0}/>
+                                  </linearGradient>
+                              </defs>
+                              <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                              <XAxis dataKey="date" axisLine={false} tickLine={false} tick={{fontSize: 10}} />
+                              <YAxis axisLine={false} tickLine={false} tick={{fontSize: 10}} />
+                              <Tooltip contentStyle={{borderRadius: '12px'}} />
+                              <Area type="monotone" dataKey="count" stroke="#3b82f6" strokeWidth={3} fillOpacity={1} fill="url(#colorTrendOverview)" />
+                          </AreaChart>
+                      </ResponsiveContainer>
+                  </div>
+              </div>
+           </div>
+        )}
+
         {/* === 1. Personal Deep Report === */}
         {activeTab === 'personal' && personalMetric && (
           <div className="space-y-6">
-             {/* Score Card Header */}
              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                 <div className="bg-gradient-to-br from-blue-600 to-indigo-700 text-white p-6 rounded-[2.5rem] shadow-xl md:col-span-1 relative overflow-hidden">
                     <div className="absolute top-0 right-0 p-8 opacity-10"><i className="fas fa-award text-9xl"></i></div>
@@ -155,76 +201,9 @@ const ReportsView: React.FC<ReportsViewProps> = ({ userRole, userId }) => {
                 </div>
 
                 <div className="md:col-span-2 grid grid-cols-3 gap-4">
-                    <MetricCard 
-                        title="تحقيق المستهدف" 
-                        value={`${Math.round(personalMetric.targetAchievement)}%`} 
-                        sub={`${personalMetric.totalUnits} / ${personalMetric.targetValue}`}
-                        icon="fa-bullseye" 
-                        color="emerald" 
-                    />
-                    <MetricCard 
-                        title="نسبة الالتزام" 
-                        value={`${personalMetric.commitmentRate}%`} 
-                        sub={`${personalMetric.daysActive} يوم من ${personalMetric.daysExpected}`}
-                        icon="fa-calendar-check" 
-                        color="blue" 
-                    />
-                    <MetricCard 
-                        title="جودة التسجيل" 
-                        value={`${Math.round(personalMetric.approvalRate)}%`} 
-                        sub={`${personalMetric.approvalRate < 60 ? 'يحتاج تحسين' : 'مقبول'}`}
-                        icon="fa-star" 
-                        color={personalMetric.approvalRate < 60 ? 'orange' : 'purple'} 
-                    />
-                </div>
-             </div>
-
-             {/* Trend & Flags */}
-             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                <div className="lg:col-span-2 bg-white p-6 rounded-[2.5rem] shadow-sm border border-gray-100">
-                    <h3 className="text-sm font-black text-slate-800 mb-6 flex items-center gap-2"><i className="fas fa-chart-area text-blue-500"></i> تطور الأداء الزمني</h3>
-                    <div className="h-[250px]">
-                        <ResponsiveContainer width="100%" height="100%">
-                            <AreaChart data={trendData}>
-                                <defs>
-                                    <linearGradient id="colorTrend" x1="0" y1="0" x2="0" y2="1">
-                                        <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.3}/>
-                                        <stop offset="95%" stopColor="#3b82f6" stopOpacity={0}/>
-                                    </linearGradient>
-                                </defs>
-                                <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                                <XAxis dataKey="date" axisLine={false} tickLine={false} tick={{fontSize: 10}} />
-                                <YAxis axisLine={false} tickLine={false} tick={{fontSize: 10}} />
-                                <Tooltip contentStyle={{borderRadius: '12px'}} />
-                                <Area type="monotone" dataKey="count" stroke="#3b82f6" fillOpacity={1} fill="url(#colorTrend)" />
-                            </AreaChart>
-                        </ResponsiveContainer>
-                    </div>
-                </div>
-                
-                <div className="bg-white p-6 rounded-[2.5rem] shadow-sm border border-gray-100">
-                    <h3 className="text-sm font-black text-slate-800 mb-6 flex items-center gap-2"><i className="fas fa-flag text-red-500"></i> مؤشرات الخطر</h3>
-                    {personalMetric.riskFlags.length > 0 ? (
-                        <div className="space-y-3">
-                            {personalMetric.riskFlags.map((flag, idx) => (
-                                <div key={idx} className="flex items-center gap-3 p-3 bg-red-50 rounded-xl border border-red-100">
-                                    <i className="fas fa-exclamation-triangle text-red-500"></i>
-                                    <span className="text-xs font-bold text-red-700">{flag}</span>
-                                </div>
-                            ))}
-                            <div className="mt-4 p-3 bg-gray-50 rounded-xl text-[10px] text-gray-500">
-                                يرجى مراجعة هذه النقاط لتجنب التأثير السلبي على التقييم الشهري.
-                            </div>
-                        </div>
-                    ) : (
-                        <div className="flex flex-col items-center justify-center h-[200px] text-center">
-                            <div className="w-16 h-16 bg-emerald-100 rounded-full flex items-center justify-center text-emerald-600 text-2xl mb-3">
-                                <i className="fas fa-check"></i>
-                            </div>
-                            <p className="font-black text-slate-800">سجل نظيف</p>
-                            <p className="text-xs text-gray-400">لا توجد ملاحظات سلبية على الأداء</p>
-                        </div>
-                    )}
+                    <MetricCard title="تحقيق المستهدف" value={`${Math.round(personalMetric.targetAchievement)}%`} sub={`${personalMetric.totalUnits} / ${personalMetric.targetValue}`} icon="fa-bullseye" color="emerald" />
+                    <MetricCard title="نسبة الالتزام" value={`${personalMetric.commitmentRate}%`} sub={`${personalMetric.daysActive} يوم من ${personalMetric.daysExpected}`} icon="fa-calendar-check" color="blue" />
+                    <MetricCard title="جودة التسجيل" value={`${Math.round(personalMetric.approvalRate)}%`} sub={`${personalMetric.approvalRate < 60 ? 'يحتاج تحسين' : 'مقبول'}`} icon="fa-star" color={personalMetric.approvalRate < 60 ? 'orange' : 'purple'} />
                 </div>
              </div>
           </div>
@@ -297,12 +276,6 @@ const ReportsView: React.FC<ReportsViewProps> = ({ userRole, userId }) => {
                     </div>
                  </div>
               ))}
-              {matrixData.filter(m => m.riskLevel !== 'low').length === 0 && (
-                 <div className="col-span-3 text-center py-20 bg-white rounded-[2rem] border border-emerald-100 border-dashed">
-                    <i className="fas fa-shield-check text-4xl text-emerald-200 mb-4"></i>
-                    <p className="text-gray-400 font-bold">جميع المفتشين في المنطقة الآمنة</p>
-                 </div>
-              )}
            </div>
         )}
 

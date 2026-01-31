@@ -34,6 +34,16 @@ export const supabaseService = {
     return data || [];
   },
 
+  createInspector: async (inspector: Partial<Inspector>) => {
+    const { data, error } = await supabase.from('inspectors').insert([inspector]).select();
+    return { success: !error, data, error };
+  },
+
+  createInspectorsBatch: async (inspectors: Partial<Inspector>[]) => {
+    const { data, error } = await supabase.from('inspectors').insert(inspectors).select();
+    return { success: !error, data, error };
+  },
+
   updateInspectorPassword: async (id: string, password: string) => {
     const { error } = await supabase
       .from('inspectors')
