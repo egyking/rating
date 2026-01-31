@@ -17,34 +17,28 @@ export const supabaseService = {
   
   saveInspectors: async (inspectors: any[]) => {
     try {
-      // محاولة الإدخال الأولية
       const { data, error } = await supabase.from('inspectors').insert(inspectors).select();
-      
-      // إذا حدث خطأ بسبب نقص الأعمدة في السكيما (password أو role)
       if (error && (error.message.includes('password') || error.message.includes('role'))) {
-        console.warn('Supabase Schema Cache Issue:', error.message);
-        
-        // تحديد الأعمدة المفقودة من رسالة الخطأ لتجنب إرسالها
         const missingColumns = [];
         if (error.message.includes('password')) missingColumns.push('password');
         if (error.message.includes('role')) missingColumns.push('role');
-        
         const simplified = inspectors.map(ins => {
           const clone = { ...ins };
           missingColumns.forEach(col => delete clone[col]);
           return clone;
         });
-        
-        // إعادة المحاولة بالبيانات المبسطة
         const { data: retryData, error: retryError } = await supabase.from('inspectors').insert(simplified).select();
         return { success: !retryError, data: retryData, error: retryError };
       }
-      
       return { success: !error, data, error };
     } catch (e: any) {
-      console.error('Critical Error in saveInspectors:', e);
       return { success: false, error: e };
     }
+  },
+
+  updateInspectorPassword: async (id: string, newPassword: string) => {
+    const { error } = await supabase.from('inspectors').update({ password: newPassword }).eq('id', id);
+    return { success: !error, error };
   },
 
   deleteInspector: async (id: string) => {
@@ -100,11 +94,17 @@ export const supabaseService = {
 
     const cleanEvals = evaluations.map(ev => ({
       ...ev,
-      inspector_id: validIds.has(ev.inspector_id) ? ev.inspector_id : null
+      inspector_id: validIds.has(ev.inspector_id) ? ev.inspector_id : null,
+      status: ev.status || 'pending'
     }));
 
     const { data, error } = await supabase.from('evaluation_records').insert(cleanEvals).select();
     return { success: !error, count: data?.length || 0, error };
+  },
+
+  updateRecordStatus: async (id: string, status: 'approved' | 'pending') => {
+    const { error } = await supabase.from('evaluation_records').update({ status }).eq('id', id);
+    return { success: !error, error };
   },
 
   getRecords: async (filters?: any) => {
@@ -112,6 +112,7 @@ export const supabaseService = {
     if (filters?.employee) query = query.ilike('inspector_name', `%${filters.employee}%`);
     if (filters?.dateFrom) query = query.gte('date', filters.dateFrom);
     if (filters?.dateTo) query = query.lte('date', filters.dateTo);
+    if (filters?.status) query = query.eq('status', filters.status);
     const { data } = await query;
     return data || [];
   },

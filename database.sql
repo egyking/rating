@@ -39,7 +39,7 @@ CREATE TABLE IF NOT EXISTS evaluation_items (
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
--- 3. جدول السجلات
+-- 3. جدول السجلات (تحديث ليشمل الحالة)
 CREATE TABLE IF NOT EXISTS evaluation_records (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
@@ -55,8 +55,17 @@ CREATE TABLE IF NOT EXISTS evaluation_records (
     count INTEGER DEFAULT 1,
     notes TEXT,
     answers JSONB DEFAULT '{}'::jsonb,
-    metadata JSONB DEFAULT '{}'::jsonb
+    metadata JSONB DEFAULT '{}'::jsonb,
+    status TEXT DEFAULT 'pending' -- pending, approved
 );
+
+-- إضافة عمود الحالة إذا لم يكن موجوداً
+DO $$ 
+BEGIN 
+    IF NOT EXISTS (SELECT 1 FROM pg_attribute WHERE attrelid = 'evaluation_records'::regclass AND attname = 'status') THEN
+        ALTER TABLE evaluation_records ADD COLUMN status TEXT DEFAULT 'approved';
+    END IF;
+END $$;
 
 -- 4. جدول المستهدفات
 CREATE TABLE IF NOT EXISTS targets (

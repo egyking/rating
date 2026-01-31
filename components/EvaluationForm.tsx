@@ -90,15 +90,17 @@ const EvaluationForm: React.FC<EvaluationFormProps> = ({ onSaved, currentUser })
     }));
   };
 
-  const handleSave = async () => {
+  const handleSave = async (isProposed: boolean) => {
     setIsSaving(true);
     const finalBatch: any[] = [];
     
+    // المفتش دائما يحفظ كـ "مقترح" إلا لو كان المدير هو اللي بيدخل
+    const recordStatus = currentUser.role === 'admin' ? (isProposed ? 'pending' : 'approved') : 'pending';
+
     for (const card of cards) {
       const item = itemsDB.find(i => i.id === card.itemId);
       if (!item) continue;
 
-      // حفظ البند الأساسي مع بياناته المرتبطة في جدول Database
       finalBatch.push({
         date,
         inspector_id: currentUser.id,
@@ -111,10 +113,10 @@ const EvaluationForm: React.FC<EvaluationFormProps> = ({ onSaved, currentUser })
         department: item.department,
         count: card.count,
         notes: card.notes,
-        answers: card.answers
+        answers: card.answers,
+        status: recordStatus
       });
 
-      // حفظ البنود المولدة
       card.generatedEvals.forEach((gen: any) => {
         finalBatch.push({
           date,
@@ -126,7 +128,8 @@ const EvaluationForm: React.FC<EvaluationFormProps> = ({ onSaved, currentUser })
           department: gen.dept,
           count: gen.count,
           notes: `توليد تلقائي: ${gen.sourceQuestion}`,
-          metadata: { is_generated: true }
+          metadata: { is_generated: true },
+          status: recordStatus
         });
       });
     }
@@ -139,7 +142,7 @@ const EvaluationForm: React.FC<EvaluationFormProps> = ({ onSaved, currentUser })
     const res = await supabaseService.saveBatchEvaluations(finalBatch);
     setIsSaving(false);
     if (res.success) {
-      alert(`✅ تم حفظ ${res.count} حركات بنجاح`);
+      alert(`✅ تم حفظ ${res.count} حركات بنجاح (${recordStatus === 'pending' ? 'تقييم مقترح بانتظار الاعتماد' : 'تقييم معتمد'})`);
       onSaved();
     } else {
       alert('❌ فشل الحفظ: ' + res.error?.message);
@@ -178,7 +181,7 @@ const EvaluationForm: React.FC<EvaluationFormProps> = ({ onSaved, currentUser })
               
               <div className="p-6 space-y-6">
                 <div className="relative" ref={el => { searchRefs.current[card.id] = el; }}>
-                  <label className="block text-[10px] font-black text-gray-400 mb-2 uppercase tracking-widest">📋 ابحث عن البند الفرعي (مثل الشيت)</label>
+                  <label className="block text-[10px] font-black text-gray-400 mb-2 uppercase tracking-widest">📋 ابحث عن البند الفرعي</label>
                   <div 
                     onClick={() => setIsSearchOpen(prev => ({ ...prev, [card.id]: true }))}
                     className="w-full bg-gray-50 border-2 border-transparent focus-within:border-blue-500 rounded-2xl p-4 transition-all flex items-center gap-3 cursor-pointer"
@@ -288,9 +291,13 @@ const EvaluationForm: React.FC<EvaluationFormProps> = ({ onSaved, currentUser })
         <button onClick={addCard} className="flex-1 bg-white text-blue-600 border-2 border-blue-600 p-4 rounded-2xl font-black shadow-2xl flex items-center justify-center gap-2">
           <i className="fas fa-plus"></i> إضافة بند آخر
         </button>
-        <button onClick={handleSave} disabled={isSaving} className="flex-[2] bg-blue-600 text-white p-4 rounded-2xl font-black shadow-2xl flex items-center justify-center gap-2">
-          {isSaving ? <i className="fas fa-spinner fa-spin"></i> : <i className="fas fa-save"></i>}
-          حفظ الحركات
+        <button 
+          onClick={() => handleSave(true)} 
+          disabled={isSaving} 
+          className="flex-[2] bg-blue-600 text-white p-4 rounded-2xl font-black shadow-2xl flex items-center justify-center gap-2"
+        >
+          {isSaving ? <i className="fas fa-spinner fa-spin"></i> : <i className="fas fa-paper-plane"></i>}
+          {currentUser.role === 'admin' ? 'حفظ كمعتمد' : 'إرسال للاعتماد (مقترح)'}
         </button>
       </div>
     </div>

@@ -20,10 +20,9 @@ const Dashboard: React.FC<DashboardProps> = ({ userRole, userId }) => {
     const inspectors = await supabaseService.getInspectors();
     const targets = await supabaseService.getTargets();
     
-    // إذا كان مفتش، فلترة بياناته فقط
-    if (userRole === 'inspector') {
-      records = records.filter(r => r.inspector_id === userId);
-    }
+    // فلترة السجلات المعتمدة فقط للإحصائيات العامة
+    const approvedRecords = records.filter(r => r.status === 'approved');
+    const filteredRecords = userRole === 'inspector' ? approvedRecords.filter(r => r.inspector_id === userId) : approvedRecords;
 
     const last7Days = Array.from({ length: 7 }, (_, i) => {
       const d = new Date();
@@ -33,14 +32,13 @@ const Dashboard: React.FC<DashboardProps> = ({ userRole, userId }) => {
 
     const trendData = last7Days.map(date => ({
       date: date.split('-').slice(2).join('/'),
-      count: records.filter(r => r.date === date).reduce((sum, r) => sum + r.count, 0)
+      count: filteredRecords.filter(r => r.date === date).reduce((sum, r) => sum + r.count, 0)
     }));
 
-    // معالجة بيانات المفتشين (للمدير يعرض الجميع، للمفتش يعرض نفسه فقط)
     const displayInspectors = userRole === 'admin' ? inspectors : inspectors.filter(i => i.id === userId);
     
     const progressData = displayInspectors.map(ins => {
-      const insRecords = records.filter(r => r.inspector_id === ins.id);
+      const insRecords = approvedRecords.filter(r => r.inspector_id === ins.id);
       const totalUnits = insRecords.reduce((sum, r) => sum + r.count, 0);
       
       const dailyMap = new Map();
@@ -66,8 +64,9 @@ const Dashboard: React.FC<DashboardProps> = ({ userRole, userId }) => {
     }).sort((a, b) => b.score - a.score);
 
     setStats({
-      totalRecords: records.length,
-      totalUnits: records.reduce((sum, r) => sum + r.count, 0),
+      totalRecords: filteredRecords.length,
+      totalUnits: filteredRecords.reduce((sum, r) => sum + r.count, 0),
+      pendingCount: records.filter(r => r.status === 'pending').length,
       trendData,
       progressData
     });
@@ -77,33 +76,42 @@ const Dashboard: React.FC<DashboardProps> = ({ userRole, userId }) => {
 
   return (
     <div className="space-y-8 animate-in fade-in duration-700">
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        <div className="bg-white p-8 rounded-[2rem] shadow-sm border border-gray-100 flex items-center gap-6">
-          <div className="w-14 h-14 bg-blue-100 text-blue-600 rounded-2xl flex items-center justify-center text-xl">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+        <div className="bg-white p-6 rounded-[2rem] shadow-sm border border-gray-100 flex items-center gap-4">
+          <div className="w-12 h-12 bg-blue-100 text-blue-600 rounded-2xl flex items-center justify-center text-lg">
             <i className="fas fa-tasks"></i>
           </div>
           <div>
-            <p className="text-gray-400 text-xs font-black uppercase">إجمالي الحركات</p>
-            <p className="text-2xl font-black text-gray-900">{stats.totalRecords}</p>
+            <p className="text-gray-400 text-[10px] font-black uppercase">الحركات المعتمدة</p>
+            <p className="text-xl font-black text-gray-900">{stats.totalRecords}</p>
           </div>
         </div>
-        <div className="bg-white p-8 rounded-[2rem] shadow-sm border border-gray-100 flex items-center gap-6">
-          <div className="w-14 h-14 bg-emerald-100 text-emerald-600 rounded-2xl flex items-center justify-center text-xl">
+        <div className="bg-white p-6 rounded-[2rem] shadow-sm border border-gray-100 flex items-center gap-4">
+          <div className="w-12 h-12 bg-emerald-100 text-emerald-600 rounded-2xl flex items-center justify-center text-lg">
             <i className="fas fa-star"></i>
           </div>
           <div>
-            <p className="text-gray-400 text-xs font-black uppercase">إجمالي الوحدات</p>
-            <p className="text-2xl font-black text-gray-900">{stats.totalUnits}</p>
+            <p className="text-gray-400 text-[10px] font-black uppercase">إجمالي الوحدات</p>
+            <p className="text-xl font-black text-gray-900">{stats.totalUnits}</p>
+          </div>
+        </div>
+        <div className="bg-white p-6 rounded-[2rem] shadow-sm border border-gray-100 flex items-center gap-4">
+          <div className="w-12 h-12 bg-orange-100 text-orange-600 rounded-2xl flex items-center justify-center text-lg">
+            <i className="fas fa-hourglass-half"></i>
+          </div>
+          <div>
+            <p className="text-gray-400 text-[10px] font-black uppercase">بانتظار الاعتماد</p>
+            <p className="text-xl font-black text-gray-900">{stats.pendingCount}</p>
           </div>
         </div>
         {userRole === 'admin' && (
-          <div className="bg-white p-8 rounded-[2rem] shadow-sm border border-gray-100 flex items-center gap-6">
-            <div className="w-14 h-14 bg-purple-100 text-purple-600 rounded-2xl flex items-center justify-center text-xl">
+          <div className="bg-white p-6 rounded-[2rem] shadow-sm border border-gray-100 flex items-center gap-4">
+            <div className="w-12 h-12 bg-purple-100 text-purple-600 rounded-2xl flex items-center justify-center text-lg">
               <i className="fas fa-users"></i>
             </div>
             <div>
-              <p className="text-gray-400 text-xs font-black uppercase">المفتشين النشطين</p>
-              <p className="text-2xl font-black text-gray-900">{stats.progressData.length}</p>
+              <p className="text-gray-400 text-[10px] font-black uppercase">المفتشين النشطين</p>
+              <p className="text-xl font-black text-gray-900">{stats.progressData.length}</p>
             </div>
           </div>
         )}
@@ -113,7 +121,7 @@ const Dashboard: React.FC<DashboardProps> = ({ userRole, userId }) => {
         <div className="lg:col-span-2 bg-white p-8 rounded-[2.5rem] shadow-sm border border-gray-100">
           <h3 className="text-lg font-black text-gray-800 mb-8 flex items-center gap-3">
             <i className="fas fa-chart-line text-blue-600"></i> 
-            {userRole === 'admin' ? 'إنتاجية الفريق (آخر 7 أيام)' : 'إنتاجيتي الشخصية (آخر 7 أيام)'}
+            {userRole === 'admin' ? 'إنتاجية الفريق (آخر 7 أيام)' : 'إنتاجيتي المعتمدة (آخر 7 أيام)'}
           </h3>
           <div className="h-[300px]">
             <ResponsiveContainer width="100%" height="100%">

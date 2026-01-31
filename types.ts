@@ -47,6 +47,7 @@ export interface EvaluationRecord {
   notes: string;
   answers: any;
   metadata?: any;
+  status: 'pending' | 'approved';
 }
 
 export interface Target {
