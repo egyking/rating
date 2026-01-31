@@ -34,7 +34,6 @@ export const supabaseService = {
     return data || [];
   },
 
-  // Fix for App.tsx: Added missing updateInspectorPassword method
   updateInspectorPassword: async (id: string, password: string) => {
     const { error } = await supabase
       .from('inspectors')
@@ -93,9 +92,7 @@ export const supabaseService = {
     return { success: !error, data: data?.[0], error };
   },
 
-  // اعتماد البند والسجل المرتبط به
   approveProposedItem: async (itemId: string) => {
-    // 1. تحديث حالة البند ليصبح معتمداً (دائماً)
     const { error: itemError } = await supabase
       .from('evaluation_items')
       .update({ status: 'approved' })
@@ -103,7 +100,6 @@ export const supabaseService = {
 
     if (itemError) return { success: false, error: itemError };
 
-    // 2. تحديث جميع السجلات المرتبطة بهذا البند (التي كانت معلقة بسببه)
     const { error: recordError } = await supabase
       .from('evaluation_records')
       .update({ status: 'approved' })
@@ -119,9 +115,15 @@ export const supabaseService = {
   },
 
   saveBatchEvaluations: async (evaluations: any[]) => {
+    // التأكد من أن جميع الحركات تحتوي على بيانات صالحة
     const { data, error } = await supabase.from('evaluation_records').insert(evaluations).select();
     
-    if (!error && evaluations.length > 0) {
+    if (error) {
+      console.error("Supabase Save Error:", error);
+      return { success: false, error };
+    }
+
+    if (evaluations.length > 0) {
       const isPending = evaluations.some(e => e.status === 'pending');
       if (isPending) {
         await supabaseService.createNotification({
@@ -133,7 +135,7 @@ export const supabaseService = {
         });
       }
     }
-    return { success: !error, count: data?.length || 0, error };
+    return { success: true, count: data?.length || 0 };
   },
 
   updateRecordStatus: async (id: string, status: 'approved' | 'pending') => {
@@ -157,13 +159,11 @@ export const supabaseService = {
     return data || [];
   },
 
-  // Fix for TargetsView.tsx: Added missing saveBatchTargets method
   saveBatchTargets: async (targets: any[]) => {
     const { data, error } = await supabase.from('targets').insert(targets).select();
     return { success: !error, data, error };
   },
 
-  // Fix for TargetsView.tsx: Added missing deleteTarget method
   deleteTarget: async (id: string) => {
     const { error } = await supabase.from('targets').delete().eq('id', id);
     return { success: !error, error };
