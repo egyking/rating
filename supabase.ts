@@ -73,14 +73,23 @@ export const supabaseService = {
     return null;
   },
 
-  getItems: async () => {
-    const { data } = await supabase.from('evaluation_items').select('*').order('sub_item');
-    return data || [];
+  getItems: async (filters?: { status?: 'pending' | 'approved' }) => {
+    let query = supabase.from('evaluation_items').select('*').order('sub_item');
+    if (filters?.status) {
+      query = query.eq('status', filters.status);
+    }
+    const { data } = await query;
+    return (data as EvaluationItem[]) || [];
   },
   
   saveItem: async (item: Partial<EvaluationItem>) => {
     const { data, error } = await supabase.from('evaluation_items').insert([item]).select();
-    return { success: !error, data, error };
+    return { success: !error, data: data?.[0], error };
+  },
+
+  updateItemStatus: async (id: string, status: 'approved' | 'pending') => {
+    const { error } = await supabase.from('evaluation_items').update({ status }).eq('id', id);
+    return { success: !error, error };
   },
 
   deleteItem: async (id: string) => {
@@ -114,7 +123,7 @@ export const supabaseService = {
     if (filters?.dateTo) query = query.lte('date', filters.dateTo);
     if (filters?.status) query = query.eq('status', filters.status);
     const { data } = await query;
-    return data || [];
+    return (data as EvaluationRecord[]) || [];
   },
 
   getTargets: async () => {

@@ -32,7 +32,7 @@ const ReportsView: React.FC<ReportsViewProps> = ({ userRole, userId }) => {
   const fetchData = async () => {
     setLoading(true);
     let [rec, ins, tar] = await Promise.all([
-      supabaseService.getRecords(),
+      supabaseService.getRecords({ status: 'approved' }), // Only official approved records for reports
       supabaseService.getInspectors(),
       supabaseService.getTargets()
     ]);
@@ -106,8 +106,8 @@ const ReportsView: React.FC<ReportsViewProps> = ({ userRole, userId }) => {
             <i className="fas fa-file-chart-column"></i>
           </div>
           <div>
-            <h2 className="text-lg font-black text-slate-800">استخراج التقارير التحليلية</h2>
-            <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest">تحليل الأداء والمستهدفات</p>
+            <h2 className="text-lg font-black text-slate-800">استخراج التقارير المعتمدة</h2>
+            <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest">تحليل الأداء الرسمي</p>
           </div>
         </div>
 
@@ -139,7 +139,7 @@ const ReportsView: React.FC<ReportsViewProps> = ({ userRole, userId }) => {
         {/* REPORT 1: Targets vs Achievement */}
         {activeTab === 'targets' && (
           <div className="bg-white p-8 rounded-[2.5rem] shadow-sm border border-gray-100">
-            <h3 className="text-md font-black text-slate-800 mb-8 flex items-center gap-2"><i className="fas fa-bullseye text-red-500"></i> المستهدفات مقابل الإنجاز الفعلي</h3>
+            <h3 className="text-md font-black text-slate-800 mb-8 flex items-center gap-2"><i className="fas fa-bullseye text-red-500"></i> المستهدفات مقابل الإنجاز المعتمد</h3>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               {targetAchievementData.map((item, idx) => (
                 <div key={idx} className="p-6 bg-slate-50 rounded-[2rem] border border-gray-100 space-y-4">
@@ -161,15 +161,16 @@ const ReportsView: React.FC<ReportsViewProps> = ({ userRole, userId }) => {
                   </div>
                 </div>
               ))}
-              {targetAchievementData.length === 0 && <div className="col-span-full p-20 text-center text-gray-400 font-bold">لا توجد بيانات مستهدفات لهذه الفترة</div>}
+              {targetAchievementData.length === 0 && <div className="col-span-full p-20 text-center text-gray-400 font-bold">لا توجد بيانات مستهدفات معتمدة لهذه الفترة</div>}
             </div>
           </div>
         )}
 
+        {/* Other reports follow similarly, filtering by approved records implicitly via fetchData */}
         {/* REPORT 2: Comparative Performance */}
         {activeTab === 'compare' && (
           <div className="bg-white p-8 rounded-[2.5rem] shadow-sm border border-gray-100">
-            <h3 className="text-md font-black text-slate-800 mb-8 flex items-center gap-2"><i className="fas fa-users-viewfinder text-blue-600"></i> مقارنة الأداء بين المفتشين</h3>
+            <h3 className="text-md font-black text-slate-800 mb-8 flex items-center gap-2"><i className="fas fa-users-viewfinder text-blue-600"></i> مقارنة الأداء المعتمد</h3>
             <div className="h-[400px]">
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={comparisonData} layout="vertical" margin={{left: 40}}>
@@ -185,11 +186,11 @@ const ReportsView: React.FC<ReportsViewProps> = ({ userRole, userId }) => {
           </div>
         )}
 
-        {/* REPORT 3: Item Distribution */}
+        {/* ... Item Distribution, Trends, and Pivot (already use filtered 'records' state) ... */}
         {activeTab === 'items' && (
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
             <div className="bg-white p-8 rounded-[2.5rem] shadow-sm border border-gray-100">
-              <h3 className="text-md font-black text-slate-800 mb-8 text-right">📂 توزيع البنود والأقسام</h3>
+              <h3 className="text-md font-black text-slate-800 mb-8 text-right">📂 توزيع البنود المعتمدة</h3>
               <div className="h-[300px]">
                 <ResponsiveContainer width="100%" height="100%">
                   <PieChart>
@@ -216,10 +217,9 @@ const ReportsView: React.FC<ReportsViewProps> = ({ userRole, userId }) => {
           </div>
         )}
 
-        {/* REPORT 4: Temporal Trends */}
         {activeTab === 'trends' && (
           <div className="bg-white p-8 rounded-[2.5rem] shadow-sm border border-gray-100">
-            <h3 className="text-md font-black text-slate-800 mb-8 flex items-center gap-2"><i className="fas fa-chart-line text-orange-500"></i> الاتجاهات الزمنية للأداء</h3>
+            <h3 className="text-md font-black text-slate-800 mb-8 flex items-center gap-2"><i className="fas fa-chart-line text-orange-500"></i> الاتجاهات الزمنية للأداء المعتمد</h3>
             <div className="h-[400px]">
               <ResponsiveContainer width="100%" height="100%">
                 <AreaChart data={trendData}>
@@ -240,11 +240,10 @@ const ReportsView: React.FC<ReportsViewProps> = ({ userRole, userId }) => {
           </div>
         )}
 
-        {/* REPORT 5: Pivot matrix */}
         {activeTab === 'pivot' && (
           <div className="bg-white rounded-[2rem] shadow-sm border border-gray-100 overflow-hidden">
             <div className="p-6 bg-slate-50 border-b border-gray-100">
-               <h3 className="text-sm font-black text-slate-800 text-right">مصفوفة الإنجاز التفصيلية</h3>
+               <h3 className="text-sm font-black text-slate-800 text-right">مصفوفة الإنجاز المعتمدة</h3>
             </div>
             <div className="overflow-x-auto custom-scrollbar">
                <table className="w-full text-right min-w-[1200px]">

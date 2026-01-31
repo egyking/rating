@@ -29,6 +29,7 @@ export interface EvaluationItem {
   once_per_day: boolean;
   notes?: string;
   questions?: any[];
+  status: 'pending' | 'approved';
 }
 
 export interface EvaluationRecord {
