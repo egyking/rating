@@ -13,8 +13,10 @@ export interface AuthUser {
 export interface Inspector {
   id: string;
   name: string;
+  password?: string;
   active: boolean;
   department?: string;
+  role?: string;
 }
 
 export interface EvaluationItem {
