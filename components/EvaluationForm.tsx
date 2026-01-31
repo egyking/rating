@@ -72,11 +72,33 @@ const EvaluationForm: React.FC<EvaluationFormProps> = ({ onSaved, currentUser })
     } : c));
   };
 
-  // وظيفة التحقق من الشروط لعرض السؤال (تنبثق الأسئلة بناءً على الإجابات)
+  // وظيفة التحقق من الشروط لعرض السؤال
   const shouldShowQuestion = (question: any, cardAnswers: any) => {
     if (!question.showIf) return true;
     const { field, value } = question.showIf;
-    return cardAnswers[field] === value;
+    // مقارنة مرنة (==) لضمان توافق الأرقام والنصوص
+    return cardAnswers[field] == value; 
+  };
+
+  // دالة مساعدة لتحديد نوع السؤال بدقة
+  const getQuestionType = (q: any) => {
+    const definedType = (q.type || '').toLowerCase();
+    if (definedType === 'select' || (q.options && Array.isArray(q.options) && q.options.length > 0)) {
+        return 'select';
+    }
+    if (definedType === 'boolean' || definedType === 'radio') {
+        return 'boolean';
+    }
+    return 'text';
+  };
+
+  // دالة مساعدة لفك ترميز JSON بأمان
+  const safeJsonParse = (data: any) => {
+    if (Array.isArray(data)) return data;
+    if (typeof data === 'string') {
+        try { return JSON.parse(data); } catch { return []; }
+    }
+    return [];
   };
 
   const handleSave = async () => {
@@ -108,7 +130,7 @@ const EvaluationForm: React.FC<EvaluationFormProps> = ({ onSaved, currentUser })
     try {
       const res = await supabaseService.saveBatchEvaluations(finalBatch);
       if (res.success) {
-        alert(`✅ تم إرسال البيانات بنجاح للمراجعة`);
+        alert(`✅ تم إرسال البيانات بنجاح`);
         onSaved();
       } else {
         alert(`❌ خطأ: ${res.error?.message}`);
@@ -145,8 +167,8 @@ const EvaluationForm: React.FC<EvaluationFormProps> = ({ onSaved, currentUser })
           let itemQuestions: any[] = [];
           let subTypes: string[] = [];
           if (selectedItem) {
-             itemQuestions = Array.isArray(selectedItem.questions) ? selectedItem.questions : JSON.parse(selectedItem.questions as any || '[]');
-             subTypes = Array.isArray(selectedItem.sub_types) ? selectedItem.sub_types : JSON.parse(selectedItem.sub_types as any || '[]');
+             itemQuestions = safeJsonParse(selectedItem.questions);
+             subTypes = safeJsonParse(selectedItem.sub_types);
           }
 
           return (
@@ -230,28 +252,30 @@ const EvaluationForm: React.FC<EvaluationFormProps> = ({ onSaved, currentUser })
                       <div className="bg-blue-50/30 p-5 rounded-[1.5rem] border border-blue-100/50 space-y-4">
                          <h4 className="text-[9px] font-black text-blue-500 uppercase tracking-widest mb-2">البيانات الإضافية المطلوبة</h4>
                          {itemQuestions.map((q: any, qIdx: number) => {
-                           // التحقق من الشرطية (Logic)
                            if (!shouldShowQuestion(q, card.answers)) return null;
+
+                           const qType = getQuestionType(q);
 
                            return (
                              <div key={qIdx} className="space-y-1.5 animate-in fade-in duration-300">
-                                <label className="text-[11px] font-black text-slate-700 pr-1">{q.label}</label>
-                                {q.type === 'select' ? (
+                                <label className="text-[11px] font-black text-slate-700 pr-1">{q.label} {q.required && <span className="text-red-500">*</span>}</label>
+                                
+                                {qType === 'select' ? (
                                   <select 
-                                    className="w-full bg-white border border-gray-200 rounded-xl p-3 text-xs font-bold outline-none"
+                                    className="w-full bg-white border border-gray-200 rounded-xl p-3 text-xs font-bold outline-none focus:border-blue-500"
                                     value={card.answers[q.label] || ''}
                                     onChange={e => handleUpdateAnswer(card.id, q.label, e.target.value)}
                                   >
-                                    <option value="">-- اختر --</option>
+                                    <option value="">-- اختر من القائمة --</option>
                                     {q.options?.map((opt: string) => <option key={opt} value={opt}>{opt}</option>)}
                                   </select>
-                                ) : q.type === 'boolean' ? (
+                                ) : qType === 'boolean' ? (
                                   <div className="flex gap-2">
                                     {['نعم', 'لا'].map(opt => (
                                       <button
                                         key={opt}
                                         onClick={() => handleUpdateAnswer(card.id, q.label, opt)}
-                                        className={`flex-1 py-3 rounded-xl text-[11px] font-black border transition-all ${card.answers[q.label] === opt ? 'bg-blue-600 border-blue-600 text-white shadow-lg' : 'bg-white border-gray-200 text-gray-400'}`}
+                                        className={`flex-1 py-3 rounded-xl text-[11px] font-black border transition-all ${card.answers[q.label] === opt ? 'bg-blue-600 border-blue-600 text-white shadow-lg' : 'bg-white border-gray-200 text-gray-400 hover:border-blue-300'}`}
                                       >
                                         {opt}
                                       </button>
@@ -260,8 +284,8 @@ const EvaluationForm: React.FC<EvaluationFormProps> = ({ onSaved, currentUser })
                                 ) : (
                                   <input 
                                     type="text" 
-                                    className="w-full bg-white border border-gray-200 rounded-xl p-3 text-xs font-bold outline-none"
-                                    placeholder="..."
+                                    className="w-full bg-white border border-gray-200 rounded-xl p-3 text-xs font-bold outline-none focus:border-blue-500"
+                                    placeholder="اكتب الإجابة..."
                                     value={card.answers[q.label] || ''}
                                     onChange={e => handleUpdateAnswer(card.id, q.label, e.target.value)}
                                   />
@@ -327,7 +351,7 @@ const EvaluationForm: React.FC<EvaluationFormProps> = ({ onSaved, currentUser })
                     }
                     setIsSaving(false);
                  }} className="flex-1 bg-blue-600 text-white py-3 rounded-xl font-black text-[11px]">حفظ</button>
-                 <button onClick={() => setShowSuggestModal(false)} className="flex-1 bg-gray-100 text-gray-400 py-3 rounded-xl font-black text-[11px]">إلغاء</button>
+                 <button onClick={() => setShowSuggestModal(false)} className="flex-1 bg-gray-100 text-gray-400 py-3 rounded-xl font-black text-[11px]">إغلاق</button>
               </div>
            </div>
         </div>
