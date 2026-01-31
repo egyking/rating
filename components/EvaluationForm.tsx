@@ -8,23 +8,60 @@ interface EvaluationFormProps {
   currentUser: AuthUser;
 }
 
+// تعريفات الهيكلية الجديدة للأسئلة
+interface EvaluationOutput {
+  subItem: string;
+  code: string;
+  mainItem: string;
+  dept: string;
+  defaultCount?: number;
+}
+
+interface QuestionOption {
+  text: string;
+  value: string;
+  evaluations?: EvaluationOutput[];
+  requiresInput?: boolean;
+  inputType?: string;
+  inputLabel?: string;
+}
+
+interface QuestionSchema {
+  question: string;
+  type: 'choice' | 'multichoice' | 'yesno' | 'rating' | 'text' | 'choice_with_input';
+  options?: QuestionOption[] | Record<string, any>;
+  conditionalQuestions?: Record<string, QuestionSchema[]>; // للأسئلة المتداخلة
+  generateEvaluations?: boolean;
+  multipleSelection?: boolean;
+  required?: boolean;
+  min?: number;
+  max?: number;
+  labels?: Record<string, string>; // للتقييم
+  evaluationsByRating?: Record<string, EvaluationOutput[]>; // للتقييم
+}
+
 const EvaluationForm: React.FC<EvaluationFormProps> = ({ onSaved, currentUser }) => {
   const [itemsDB, setItemsDB] = useState<EvaluationItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   
-  const [showSuggestModal, setShowSuggestModal] = useState(false);
-  const [suggestForm, setSuggestForm] = useState({ sub_item: '', main_item: 'تفتيش ميداني', code: '' });
-  const [activeCardIdForSuggest, setActiveCardIdForSuggest] = useState<number | null>(null);
+  // State for Cards (Each card represents a flow starting from a Trigger Item)
+  // answers: تخزين إجابات الأسئلة
+  // customCounts: تخزين تعديلات المستخدم على عدادات البنود المولدة (مفتاحها هو كود البند)
+  const [cards, setCards] = useState<any[]>([{ 
+    id: Date.now(), 
+    itemId: '', 
+    answers: {}, 
+    customCounts: {}, // لتخزين العدادات المعدلة يدوياً { [generatedCode]: count }
+    notes: ''
+  }]);
 
+  // Search Logic
   const [searchQuery, setSearchQuery] = useState<{ [key: number]: string }>({});
   const [isSearchOpen, setIsSearchOpen] = useState<{ [key: number]: boolean }>({});
   const searchRefs = useRef<{ [key: number]: HTMLDivElement | null }>({});
 
   const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
-  const [cards, setCards] = useState<any[]>([{ 
-    id: Date.now(), itemId: '', count: 1, subType: '', notes: '', answers: {} 
-  }]);
 
   useEffect(() => {
     loadItems();
@@ -59,90 +96,312 @@ const EvaluationForm: React.FC<EvaluationFormProps> = ({ onSaved, currentUser })
 
   const handleSelectItem = (cardId: number, item: EvaluationItem) => {
     setCards(cards.map(c => c.id === cardId ? { 
-      ...c, itemId: item.id, subType: '', answers: {}, count: 1 
+      ...c, itemId: item.id, answers: {}, customCounts: {} 
     } : c));
     setIsSearchOpen(prev => ({ ...prev, [cardId]: false }));
     setSearchQuery(prev => ({ ...prev, [cardId]: '' }));
   };
 
-  const handleUpdateAnswer = (cardId: number, questionLabel: string, value: any) => {
-    setCards(cards.map(c => c.id === cardId ? {
-      ...c,
-      answers: { ...c.answers, [questionLabel]: value }
-    } : c));
+  const handleAnswerChange = (cardId: number, questionIdx: string, value: any) => {
+    setCards(prevCards => prevCards.map(c => {
+      if (c.id !== cardId) return c;
+      
+      const newAnswers = { ...c.answers, [questionIdx]: value };
+      
+      // إذا تغيرت الإجابة، قد نحتاج لتصفية الإجابات الفرعية القديمة (اختياري، للتبسيط سنحتفظ بها)
+      return { ...c, answers: newAnswers };
+    }));
   };
 
-  const shouldShowQuestion = (question: any, cardAnswers: any) => {
-    if (!question.showIf) return true;
-    const { field, value } = question.showIf;
-    return cardAnswers[field] == value; 
+  const handleCountChange = (cardId: number, itemCode: string, delta: number) => {
+    setCards(cards.map(c => {
+      if (c.id !== cardId) return c;
+      const currentCount = c.customCounts[itemCode] || 1; // Default is usually 1, but we calculate strictly later
+      const newCount = Math.max(0, currentCount + delta); // Allow 0 to essentially "remove" it
+      return { ...c, customCounts: { ...c.customCounts, [itemCode]: newCount } };
+    }));
   };
 
-  const getQuestionType = (q: any) => {
-    const definedType = (q.type || '').toLowerCase();
-    if (definedType === 'select' || (q.options && Array.isArray(q.options) && q.options.length > 0)) {
-        return 'select';
-    }
-    if (definedType === 'boolean' || definedType === 'radio') {
-        return 'boolean';
-    }
-    return 'text';
+  // --- Logic to Parse JSON and Generate Items ---
+
+  const getGeneratedEvaluations = (card: any, selectedItem: EvaluationItem) => {
+    if (!selectedItem || !selectedItem.questions) return [];
+    
+    let questions: QuestionSchema[] = [];
+    try {
+        questions = Array.isArray(selectedItem.questions) 
+            ? selectedItem.questions 
+            : JSON.parse(selectedItem.questions as any || '[]');
+    } catch (e) { return []; }
+
+    const generatedItems: EvaluationOutput[] = [];
+
+    // دالة تكرارية لمعالجة الأسئلة والأسئلة الشرطية المتداخلة
+    const processQuestions = (qs: QuestionSchema[], parentPrefix = '') => {
+        qs.forEach((q, idx) => {
+            const qKey = parentPrefix ? `${parentPrefix}_${idx}` : `${idx}`;
+            const answer = card.answers[qKey];
+
+            if (!answer) return; // لم تتم الإجابة بعد
+
+            // 1. معالجة التقييمات المباشرة (Direct Evaluations)
+            if (q.type === 'choice' || q.type === 'choice_with_input' || q.type === 'multichoice') {
+                const selectedOptions = Array.isArray(answer) ? answer : [answer];
+                const optionsArr = Array.isArray(q.options) ? q.options : [];
+                
+                selectedOptions.forEach((val: string) => {
+                    const opt = optionsArr.find((o: any) => o.value === val);
+                    if (opt && opt.evaluations) {
+                        generatedItems.push(...opt.evaluations);
+                    }
+                });
+            } else if (q.type === 'yesno') {
+                const opts = q.options as Record<string, any>; // yes/no keys
+                const selectedOpt = opts[answer as string];
+                if (selectedOpt && selectedOpt.evaluations) {
+                    generatedItems.push(...selectedOpt.evaluations);
+                }
+            } else if (q.type === 'rating') {
+                if (q.evaluationsByRating && q.evaluationsByRating[answer]) {
+                    generatedItems.push(...q.evaluationsByRating[answer]);
+                }
+            }
+
+            // 2. معالجة الأسئلة الشرطية (Conditional Questions)
+            if (q.conditionalQuestions && q.conditionalQuestions[answer]) {
+                processQuestions(q.conditionalQuestions[answer], qKey);
+            }
+        });
+    };
+
+    processQuestions(questions);
+
+    // دمج النتائج المتشابهة (نفس الكود)
+    // لكن هنا سنعيدهم كقائمة، والعرض هو من يتعامل مع التجميع أو التكرار
+    // لتبسيط العرض، سنقوم بتصفية العناصر المكررة بالكامل، لكن لو اختلفت سنبقيها
+    return generatedItems;
   };
 
-  const safeJsonParse = (data: any) => {
-    if (Array.isArray(data)) return data;
-    if (typeof data === 'string') {
-        try { return JSON.parse(data); } catch { return []; }
+  // --- Rendering Components ---
+
+  const renderQuestionInput = (q: QuestionSchema, qKey: string, card: any) => {
+    const answer = card.answers[qKey];
+
+    switch (q.type) {
+        case 'choice':
+        case 'choice_with_input':
+            const options = Array.isArray(q.options) ? q.options : [];
+            return (
+                <div className="flex flex-wrap gap-2">
+                    {options.map((opt, idx) => (
+                        <button
+                            key={idx}
+                            onClick={() => handleAnswerChange(card.id, qKey, opt.value)}
+                            className={`px-4 py-2 rounded-xl text-xs font-bold border transition-all ${
+                                answer === opt.value 
+                                ? 'bg-blue-600 text-white border-blue-600 shadow-md' 
+                                : 'bg-white text-gray-600 border-gray-200 hover:border-blue-300'
+                            }`}
+                        >
+                            {opt.text}
+                        </button>
+                    ))}
+                </div>
+            );
+
+        case 'multichoice':
+            const mOptions = Array.isArray(q.options) ? q.options : [];
+            const currentSelected = Array.isArray(answer) ? answer : [];
+            return (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    {mOptions.map((opt, idx) => {
+                        const isSelected = currentSelected.includes(opt.value);
+                        return (
+                            <button
+                                key={idx}
+                                onClick={() => {
+                                    const newSel = isSelected 
+                                        ? currentSelected.filter((v: string) => v !== opt.value)
+                                        : [...currentSelected, opt.value];
+                                    handleAnswerChange(card.id, qKey, newSel);
+                                }}
+                                className={`flex items-center justify-between px-4 py-3 rounded-xl text-xs font-bold border transition-all ${
+                                    isSelected 
+                                    ? 'bg-blue-50 text-blue-700 border-blue-200' 
+                                    : 'bg-white text-gray-600 border-gray-200'
+                                }`}
+                            >
+                                <span>{opt.text}</span>
+                                {isSelected && <i className="fas fa-check-circle text-blue-600"></i>}
+                            </button>
+                        );
+                    })}
+                </div>
+            );
+
+        case 'yesno':
+            const ynOptions = q.options as Record<string, any>;
+            return (
+                <div className="flex gap-3">
+                    {['yes', 'no'].map((key) => {
+                        const opt = ynOptions[key];
+                        if (!opt) return null;
+                        return (
+                            <button
+                                key={key}
+                                onClick={() => handleAnswerChange(card.id, qKey, key)}
+                                className={`flex-1 py-3 rounded-xl text-xs font-bold border transition-all ${
+                                    answer === key 
+                                    ? (key === 'yes' ? 'bg-emerald-500 text-white border-emerald-500' : 'bg-red-500 text-white border-red-500')
+                                    : 'bg-white text-gray-500 border-gray-200'
+                                }`}
+                            >
+                                {opt.text}
+                            </button>
+                        );
+                    })}
+                </div>
+            );
+
+        case 'rating':
+            const range = Array.from({ length: (q.max || 5) - (q.min || 1) + 1 }, (_, i) => (i + (q.min || 1)).toString());
+            return (
+                <div className="flex justify-between gap-1 bg-gray-50 p-1 rounded-xl">
+                    {range.map(val => (
+                        <button
+                            key={val}
+                            onClick={() => handleAnswerChange(card.id, qKey, val)}
+                            className={`flex-1 py-3 rounded-lg text-xs font-black transition-all ${
+                                answer === val 
+                                ? 'bg-amber-400 text-white shadow-sm transform scale-105' 
+                                : 'text-gray-400 hover:bg-white'
+                            }`}
+                        >
+                            {val}
+                        </button>
+                    ))}
+                </div>
+            );
+            
+        case 'text':
+            return (
+                <textarea
+                    className="w-full bg-white border border-gray-200 rounded-xl p-3 text-xs font-bold outline-none focus:ring-2 focus:ring-blue-100 min-h-[80px]"
+                    placeholder={q.question}
+                    value={answer || ''}
+                    onChange={(e) => handleAnswerChange(card.id, qKey, e.target.value)}
+                />
+            );
+
+        default:
+            return <p className="text-red-400 text-[10px]">نوع السؤال غير مدعوم: {q.type}</p>;
     }
-    return [];
   };
 
-  // Helper to safely extract label from string or object option
-  const getOptionLabel = (opt: any) => {
-    if (typeof opt === 'object' && opt !== null) {
-      return opt.text || opt.label || opt.name || opt.value || JSON.stringify(opt);
-    }
-    return String(opt);
-  };
+  // دالة عرض الأسئلة بشكل تكراري (Recursive)
+  const renderQuestionsRecursive = (questions: QuestionSchema[], card: any, parentPrefix = '') => {
+    return questions.map((q, idx) => {
+        const qKey = parentPrefix ? `${parentPrefix}_${idx}` : `${idx}`;
+        const answer = card.answers[qKey];
+        const isAnswered = answer !== undefined && answer !== null && answer !== '' && (Array.isArray(answer) ? answer.length > 0 : true);
 
-  // Helper to safely extract value from string or object option
-  const getOptionValue = (opt: any) => {
-    if (typeof opt === 'object' && opt !== null) {
-      return opt.value || opt.id || opt.text || JSON.stringify(opt);
-    }
-    return String(opt);
+        return (
+            <div key={qKey} className="space-y-3 animate-in fade-in slide-in-from-top-2 duration-300">
+                <div className="space-y-2">
+                    <label className="text-[11px] font-black text-slate-800 flex items-center gap-2">
+                        <span className="w-1.5 h-1.5 bg-blue-500 rounded-full"></span>
+                        {q.question}
+                        {q.required && <span className="text-red-500">*</span>}
+                    </label>
+                    {renderQuestionInput(q, qKey, card)}
+                </div>
+
+                {/* Render Conditional Nested Questions */}
+                {isAnswered && q.conditionalQuestions && q.conditionalQuestions[answer] && (
+                    <div className="mr-3 pl-3 border-r-2 border-blue-100 space-y-4 mt-2">
+                        {renderQuestionsRecursive(q.conditionalQuestions[answer], card, qKey)}
+                    </div>
+                )}
+            </div>
+        );
+    });
   };
 
   const handleSave = async () => {
     if (isSaving) return;
+    
+    // التحقق من الحقول المطلوبة (يمكن تطويره لاحقاً)
     const validCards = cards.filter(card => card.itemId);
     if (validCards.length === 0) return alert('يرجى اختيار بند واحد على الأقل');
 
     setIsSaving(true);
-    const finalBatch = validCards.map(card => {
-      const item = itemsDB.find(i => i.id === card.itemId);
-      const inspectorId = currentUser.id === '00000000-0000-0000-0000-000000000000' ? null : currentUser.id;
-      return {
-        date,
-        inspector_id: inspectorId,
-        inspector_name: currentUser.fullName,
-        item_id: item?.id,
-        sub_item: item?.sub_item,
-        main_item: item?.main_item,
-        sub_type: card.subType || '',
-        code: item?.code || '',
-        department: item?.department || currentUser.department || 'الجنوب',
-        count: card.count,
-        notes: card.notes || '',
-        answers: card.answers || {},
-        status: 'pending'
-      };
-    });
+    let allRecordsToSave: any[] = [];
+
+    for (const card of validCards) {
+        const itemDB = itemsDB.find(i => i.id === card.itemId);
+        if (!itemDB) continue;
+
+        const generatedItems = getGeneratedEvaluations(card, itemDB);
+
+        // إذا لم يكن هناك عناصر مولدة، نستخدم البند الأساسي نفسه (Fallback)
+        if (generatedItems.length === 0) {
+            allRecordsToSave.push({
+                date,
+                inspector_id: currentUser.id === '00000000-0000-0000-0000-000000000000' ? null : currentUser.id,
+                inspector_name: currentUser.fullName,
+                item_id: itemDB.id,
+                sub_item: itemDB.sub_item,
+                main_item: itemDB.main_item,
+                sub_type: '', // يمكن إضافته إذا لزم الأمر
+                code: itemDB.code,
+                department: itemDB.department,
+                count: 1,
+                notes: card.notes || '',
+                answers: card.answers,
+                status: 'pending'
+            });
+        } else {
+            // حفظ كل بند مولد كسجل منفصل
+            generatedItems.forEach(genItem => {
+                // البحث عن العداد المخصص أو الافتراضي
+                const countKey = genItem.code; 
+                // نستخدم الكود كمفتاح. إذا تكرر نفس الكود في نفس البطاقة، سيتشاركون نفس العداد وهذا منطقي
+                // أو يمكن استخدام تركيبة (code + subItem)
+                const finalCount = card.customCounts[countKey] !== undefined 
+                    ? card.customCounts[countKey] 
+                    : (genItem.defaultCount || 1);
+
+                if (finalCount > 0) {
+                    allRecordsToSave.push({
+                        date,
+                        inspector_id: currentUser.id === '00000000-0000-0000-0000-000000000000' ? null : currentUser.id,
+                        inspector_name: currentUser.fullName,
+                        item_id: itemDB.id, // Reference to parent trigger item
+                        sub_item: genItem.subItem, // The Generated Name
+                        main_item: genItem.mainItem, // The Generated Category
+                        sub_type: '', 
+                        code: genItem.code,
+                        department: genItem.dept || itemDB.department,
+                        count: finalCount,
+                        notes: card.notes || '',
+                        answers: card.answers, // نحتفظ بالإجابات الأصلية للسياق
+                        metadata: { parent_item: itemDB.sub_item },
+                        status: 'pending'
+                    });
+                }
+            });
+        }
+    }
+
+    if (allRecordsToSave.length === 0) {
+        setIsSaving(false);
+        return alert('لا توجد بنود ذات كميات للحفظ.');
+    }
 
     try {
-      const res = await supabaseService.saveBatchEvaluations(finalBatch);
+      const res = await supabaseService.saveBatchEvaluations(allRecordsToSave);
       if (res.success) {
-        alert(`✅ تم إرسال البيانات بنجاح`);
+        alert(`✅ تم حفظ ${res.count} سجلات بنجاح`);
         onSaved();
       } else {
         alert(`❌ خطأ: ${res.error?.message}`);
@@ -157,9 +416,9 @@ const EvaluationForm: React.FC<EvaluationFormProps> = ({ onSaved, currentUser })
   if (loading) return <div className="p-10 text-center"><i className="fas fa-circle-notch fa-spin text-2xl text-blue-600"></i></div>;
 
   return (
-    <div className="max-w-2xl mx-auto space-y-4 pb-40 px-2">
+    <div className="max-w-3xl mx-auto space-y-4 pb-40 px-2">
       {/* Date Header */}
-      <div className="bg-white px-4 py-3 rounded-2xl shadow-sm border border-gray-100 flex items-center justify-between">
+      <div className="bg-white px-4 py-3 rounded-2xl shadow-sm border border-gray-100 flex items-center justify-between sticky top-[60px] z-30">
         <div className="flex items-center gap-2">
            <i className="fas fa-calendar-day text-blue-500"></i>
            <span className="text-[10px] font-black text-gray-400 uppercase">تاريخ التقرير</span>
@@ -167,26 +426,30 @@ const EvaluationForm: React.FC<EvaluationFormProps> = ({ onSaved, currentUser })
         <input type="date" value={date} onChange={e => setDate(e.target.value)} className="bg-transparent border-none p-0 font-black text-gray-800 text-xs text-left" />
       </div>
 
-      <div className="space-y-4">
+      <div className="space-y-6">
         {cards.map((card, index) => {
           const selectedItem = itemsDB.find(i => i.id === card.itemId);
-          const currentQuery = searchQuery[card.id] || '';
-          const filtered = itemsDB.filter(i => 
-            normalizeArabic(i.sub_item).includes(normalizeArabic(currentQuery)) || 
-            normalizeArabic(i.code).includes(normalizeArabic(currentQuery))
-          ).slice(0, 10);
-
-          let itemQuestions: any[] = [];
-          let subTypes: any[] = [];
-          if (selectedItem) {
-             itemQuestions = safeJsonParse(selectedItem.questions);
-             subTypes = safeJsonParse(selectedItem.sub_types);
-          }
+          
+          // Generate active items dynamically based on answers
+          const activeGeneratedItems = getGeneratedEvaluations(card, selectedItem!);
+          
+          // Group by unique code to allow counting. 
+          // If multiple answers generate the SAME item code, we usually want one row with accumulated count, 
+          // or distinct rows? Here we assume unique items per code for simplicity of UI.
+          const uniqueItemsMap = new Map<string, EvaluationOutput>();
+          activeGeneratedItems.forEach(item => {
+             if(!uniqueItemsMap.has(item.code)) uniqueItemsMap.set(item.code, item);
+          });
+          const displayItems = Array.from(uniqueItemsMap.values());
 
           return (
             <div key={card.id} className="bg-white rounded-[2rem] shadow-sm border border-gray-100 overflow-visible transition-all">
-              <div className="bg-slate-50 px-4 py-2 flex justify-between items-center border-b border-gray-100 rounded-t-[2rem]">
-                <span className="text-[10px] font-black text-slate-400">حركة #{index + 1}</span>
+              {/* Header */}
+              <div className="bg-slate-50 px-5 py-3 flex justify-between items-center border-b border-gray-100 rounded-t-[2rem]">
+                <div className="flex items-center gap-2">
+                    <span className="w-6 h-6 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center text-[10px] font-black">{index + 1}</span>
+                    <span className="text-[10px] font-black text-slate-400">بطاقة تقييم</span>
+                </div>
                 {cards.length > 1 && (
                   <button onClick={() => setCards(cards.filter(c => c.id !== card.id))} className="text-gray-300 hover:text-red-500 transition-colors">
                     <i className="fas fa-times-circle"></i>
@@ -194,9 +457,10 @@ const EvaluationForm: React.FC<EvaluationFormProps> = ({ onSaved, currentUser })
                 )}
               </div>
               
-              <div className="p-5 space-y-5">
-                {/* Search / Selector */}
+              <div className="p-5 space-y-6">
+                {/* 1. Main Trigger Selection */}
                 <div className="relative" ref={el => { searchRefs.current[card.id] = el; }}>
+                  <label className="text-[9px] font-black text-gray-400 mb-1 block uppercase">البند الرئيسي (المحفز)</label>
                   <div 
                     onClick={() => setIsSearchOpen(prev => ({ ...prev, [card.id]: true }))}
                     className={`w-full bg-gray-50 border rounded-2xl p-4 flex items-center gap-3 cursor-pointer transition-all ${isSearchOpen[card.id] ? 'border-blue-500 bg-white ring-4 ring-blue-50' : 'border-gray-100 hover:border-gray-300'}`}
@@ -207,120 +471,95 @@ const EvaluationForm: React.FC<EvaluationFormProps> = ({ onSaved, currentUser })
                         <p className="font-black text-slate-800 text-xs">{selectedItem.sub_item}</p>
                         <p className="text-[9px] text-blue-500 font-bold">{selectedItem.code}</p>
                       </div>
-                    ) : <p className="text-gray-400 text-xs font-bold">اختر البند الفرعي...</p>}
+                    ) : <p className="text-gray-400 text-xs font-bold">اختر نوع التفتيش...</p>}
                   </div>
-
+                  
+                  {/* Dropdown Menu */}
                   {isSearchOpen[card.id] && (
                     <div className="absolute top-full left-0 right-0 z-[70] bg-white border border-gray-200 rounded-2xl shadow-2xl mt-2 overflow-hidden animate-in fade-in zoom-in duration-150">
                       <input 
                         autoFocus
                         type="text" 
-                        placeholder="ابحث هنا..."
+                        placeholder="ابحث..."
                         className="w-full bg-gray-50 border-b border-gray-100 p-4 text-xs font-bold outline-none"
-                        value={currentQuery}
+                        value={searchQuery[card.id] || ''}
                         onChange={e => setSearchQuery(prev => ({ ...prev, [card.id]: e.target.value }))}
                       />
-                      <div className="max-h-[220px] overflow-y-auto custom-scrollbar">
-                        {filtered.length > 0 ? filtered.map(item => (
-                          <div key={item.id} onClick={() => handleSelectItem(card.id, item)} className="p-4 hover:bg-blue-50 cursor-pointer border-b border-gray-50 flex justify-between items-center group">
-                            <div className="text-right">
-                               <p className="font-black text-slate-700 text-xs group-hover:text-blue-700">{item.sub_item}</p>
-                               <p className="text-[9px] text-gray-400">{item.code}</p>
-                            </div>
+                      <div className="max-h-[200px] overflow-y-auto custom-scrollbar">
+                        {itemsDB.filter(i => normalizeArabic(i.sub_item).includes(normalizeArabic(searchQuery[card.id] || ''))).map(item => (
+                          <div key={item.id} onClick={() => handleSelectItem(card.id, item)} className="p-3 hover:bg-blue-50 cursor-pointer border-b border-gray-50 flex justify-between items-center">
+                             <p className="font-black text-slate-700 text-xs">{item.sub_item}</p>
                           </div>
-                        )) : (
-                          <div className="p-6 text-center">
-                            <button onClick={() => { setActiveCardIdForSuggest(card.id); setSuggestForm({ ...suggestForm, sub_item: currentQuery }); setShowSuggestModal(true); }} className="bg-blue-600 text-white px-5 py-2 rounded-xl text-xs font-black shadow-lg">إضافة كبند مقترح</button>
-                          </div>
-                        )}
+                        ))}
                       </div>
                     </div>
                   )}
                 </div>
 
-                {/* الأسئلة المولدة ديناميكياً - Dynamic Pop-up Area */}
+                {/* 2. Dynamic Questions Area */}
                 {selectedItem && (
-                  <div className="space-y-5 animate-in slide-in-from-top-3 duration-500">
-                    
-                    {/* التصنيف الفرعي (إذا وُجد) */}
-                    {subTypes.length > 0 && (
-                      <div className="space-y-1.5">
-                        <label className="text-[10px] font-black text-slate-400 mr-1 uppercase flex items-center gap-1">
-                           <i className="fas fa-tags text-blue-300"></i> التصنيف الفرعي
-                        </label>
-                        <select 
-                          className="w-full bg-slate-50 border border-gray-100 rounded-xl p-3 text-xs font-black outline-none focus:ring-2 focus:ring-blue-100"
-                          value={card.subType}
-                          onChange={e => setCards(cards.map(c => c.id === card.id ? {...c, subType: e.target.value} : c))}
-                        >
-                          <option value="">اختر النوع...</option>
-                          {subTypes.map((st: any, idx) => (
-                            <option key={idx} value={getOptionValue(st)}>{getOptionLabel(st)}</option>
-                          ))}
-                        </select>
-                      </div>
-                    )}
+                  <div className="space-y-6">
+                    <div className="bg-white border border-gray-100 rounded-[1.5rem] p-5 space-y-5 shadow-sm">
+                        {(() => {
+                            let questions: QuestionSchema[] = [];
+                            try {
+                                questions = Array.isArray(selectedItem.questions) 
+                                    ? selectedItem.questions 
+                                    : JSON.parse(selectedItem.questions as any || '[]');
+                            } catch(e) { return null; }
 
-                    {/* الأسئلة المخصصة من عمود Questions */}
-                    {itemQuestions.length > 0 && (
-                      <div className="bg-blue-50/30 p-5 rounded-[1.5rem] border border-blue-100/50 space-y-4">
-                         <h4 className="text-[9px] font-black text-blue-500 uppercase tracking-widest mb-2">البيانات الإضافية المطلوبة</h4>
-                         {itemQuestions.map((q: any, qIdx: number) => {
-                           if (!shouldShowQuestion(q, card.answers)) return null;
+                            if (questions.length === 0) return <p className="text-center text-gray-300 text-xs">لا توجد أسئلة لهذا البند</p>;
 
-                           const qType = getQuestionType(q);
-
-                           return (
-                             <div key={qIdx} className="space-y-1.5 animate-in fade-in duration-300">
-                                <label className="text-[11px] font-black text-slate-700 pr-1">{q.label} {q.required && <span className="text-red-500">*</span>}</label>
-                                
-                                {qType === 'select' ? (
-                                  <select 
-                                    className="w-full bg-white border border-gray-200 rounded-xl p-3 text-xs font-bold outline-none focus:border-blue-500"
-                                    value={card.answers[q.label] || ''}
-                                    onChange={e => handleUpdateAnswer(card.id, q.label, e.target.value)}
-                                  >
-                                    <option value="">-- اختر من القائمة --</option>
-                                    {q.options?.map((opt: any, optIdx: number) => (
-                                      <option key={optIdx} value={getOptionValue(opt)}>{getOptionLabel(opt)}</option>
-                                    ))}
-                                  </select>
-                                ) : qType === 'boolean' ? (
-                                  <div className="flex gap-2">
-                                    {['نعم', 'لا'].map(opt => (
-                                      <button
-                                        key={opt}
-                                        onClick={() => handleUpdateAnswer(card.id, q.label, opt)}
-                                        className={`flex-1 py-3 rounded-xl text-[11px] font-black border transition-all ${card.answers[q.label] === opt ? 'bg-blue-600 border-blue-600 text-white shadow-lg' : 'bg-white border-gray-200 text-gray-400 hover:border-blue-300'}`}
-                                      >
-                                        {opt}
-                                      </button>
-                                    ))}
-                                  </div>
-                                ) : (
-                                  <input 
-                                    type="text" 
-                                    className="w-full bg-white border border-gray-200 rounded-xl p-3 text-xs font-bold outline-none focus:border-blue-500"
-                                    placeholder="اكتب الإجابة..."
-                                    value={card.answers[q.label] || ''}
-                                    onChange={e => handleUpdateAnswer(card.id, q.label, e.target.value)}
-                                  />
-                                )}
-                             </div>
-                           );
-                         })}
-                      </div>
-                    )}
-
-                    {/* العداد (Quantity) */}
-                    <div className="flex items-center justify-between bg-emerald-50/30 p-4 rounded-2xl border border-emerald-100/30">
-                      <span className="text-[11px] font-black text-emerald-800 uppercase">إجمالي العدد المنجز</span>
-                      <div className="flex items-center gap-3 bg-white p-1 rounded-xl shadow-sm border border-emerald-100">
-                          <button onClick={() => setCards(cards.map(c => c.id === card.id ? {...c, count: Math.max(1, c.count - 1)} : c))} className="w-10 h-10 flex items-center justify-center text-red-500 hover:bg-red-50 rounded-lg"><i className="fas fa-minus text-xs"></i></button>
-                          <span className="w-8 text-center font-black text-sm text-slate-800">{card.count}</span>
-                          <button onClick={() => setCards(cards.map(c => c.id === card.id ? {...c, count: c.count + 1} : c))} className="w-10 h-10 flex items-center justify-center text-emerald-600 hover:bg-emerald-50 rounded-lg"><i className="fas fa-plus text-xs"></i></button>
-                      </div>
+                            return renderQuestionsRecursive(questions, card);
+                        })()}
                     </div>
+
+                    {/* 3. Generated Evaluations List (Outputs) */}
+                    {displayItems.length > 0 && (
+                        <div className="space-y-3 animate-in slide-in-from-bottom-2 duration-500">
+                             <div className="flex items-center gap-2 mb-2">
+                                <i className="fas fa-list-check text-emerald-500"></i>
+                                <h4 className="text-[10px] font-black text-emerald-700 uppercase">النتائج المترتبة (سيتم حفظها)</h4>
+                             </div>
+                             
+                             {displayItems.map((genItem, idx) => {
+                                 const currentCount = card.customCounts[genItem.code] !== undefined 
+                                    ? card.customCounts[genItem.code] 
+                                    : (genItem.defaultCount || 1);
+
+                                 if (currentCount === 0) return null; // Hide if 0? Or show faded? Let's hide for cleanliness or show faded.
+                                 
+                                 return (
+                                     <div key={idx} className="bg-emerald-50/50 border border-emerald-100 rounded-2xl p-4 flex items-center justify-between group hover:bg-emerald-50 transition-colors">
+                                         <div className="flex-1">
+                                             <p className="font-black text-slate-800 text-xs">{genItem.subItem}</p>
+                                             <div className="flex gap-2 mt-1">
+                                                 <span className="text-[8px] bg-white px-1.5 py-0.5 rounded text-gray-500 border border-gray-100">{genItem.mainItem}</span>
+                                                 <span className="text-[8px] bg-white px-1.5 py-0.5 rounded text-blue-500 border border-blue-100 font-mono">{genItem.code}</span>
+                                             </div>
+                                         </div>
+                                         
+                                         {/* Counter Control */}
+                                         <div className="flex items-center gap-2 bg-white p-1 rounded-xl shadow-sm border border-emerald-100">
+                                            <button 
+                                                onClick={() => handleCountChange(card.id, genItem.code, -1)} 
+                                                className="w-8 h-8 flex items-center justify-center text-red-400 hover:bg-red-50 rounded-lg transition-colors"
+                                            >
+                                                <i className="fas fa-minus text-[10px]"></i>
+                                            </button>
+                                            <span className="w-6 text-center font-black text-sm text-slate-800">{currentCount}</span>
+                                            <button 
+                                                onClick={() => handleCountChange(card.id, genItem.code, 1)} 
+                                                className="w-8 h-8 flex items-center justify-center text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors"
+                                            >
+                                                <i className="fas fa-plus text-[10px]"></i>
+                                            </button>
+                                         </div>
+                                     </div>
+                                 );
+                             })}
+                        </div>
+                    )}
                   </div>
                 )}
               </div>
@@ -329,49 +568,23 @@ const EvaluationForm: React.FC<EvaluationFormProps> = ({ onSaved, currentUser })
         })}
       </div>
 
-      {/* Action Buttons */}
+      {/* Footer Actions */}
       <div className="fixed bottom-20 lg:bottom-10 left-4 right-4 flex gap-3 z-50">
         <button 
-          onClick={() => setCards([...cards, { id: Date.now(), itemId: '', count: 1, subType: '', notes: '', answers: {} }])} 
-          className="flex-1 bg-white text-slate-700 border border-gray-200 py-4 rounded-2xl font-black shadow-lg text-xs"
+          onClick={() => setCards([...cards, { id: Date.now(), itemId: '', answers: {}, customCounts: {}, notes: '' }])} 
+          className="flex-1 bg-white text-slate-700 border border-gray-200 py-4 rounded-2xl font-black shadow-lg text-xs hover:bg-gray-50"
         >
-          <i className="fas fa-plus mr-1"></i> حركة أخرى
+          <i className="fas fa-plus mr-1"></i> عملية جديدة
         </button>
         <button 
           onClick={handleSave} 
           disabled={isSaving} 
-          className="flex-[2] bg-blue-600 text-white py-4 rounded-2xl font-black shadow-2xl shadow-blue-500/40 text-xs flex items-center justify-center gap-2"
+          className="flex-[2] bg-blue-600 text-white py-4 rounded-2xl font-black shadow-2xl shadow-blue-500/40 text-xs flex items-center justify-center gap-2 hover:bg-blue-700 active:scale-95 transition-all"
         >
            {isSaving ? <i className="fas fa-circle-notch fa-spin"></i> : <i className="fas fa-paper-plane"></i>}
            إرسال التقييم
         </button>
       </div>
-
-      {/* Suggest Modal */}
-      {showSuggestModal && (
-        <div className="fixed inset-0 z-[120] flex items-center justify-center p-4 bg-slate-900/70 backdrop-blur-md">
-           <div className="bg-white w-full max-w-sm rounded-[2.5rem] p-8 space-y-6 shadow-2xl animate-in zoom-in duration-300">
-              <h4 className="text-sm font-black text-center text-gray-800 uppercase tracking-widest">مقترح بند جديد</h4>
-              <div className="space-y-4">
-                 <input type="text" value={suggestForm.sub_item} onChange={e => setSuggestForm({...suggestForm, sub_item: e.target.value})} className="w-full bg-gray-50 border border-gray-100 rounded-2xl p-4 font-bold text-right text-xs" placeholder="اسم البند..." />
-                 <input type="text" value={suggestForm.code} onChange={e => setSuggestForm({...suggestForm, code: e.target.value})} className="w-full bg-gray-50 border border-gray-100 rounded-2xl p-4 font-bold text-right text-xs" placeholder="كود التمييز..." />
-              </div>
-              <div className="flex gap-3">
-                 <button onClick={async () => {
-                    setIsSaving(true);
-                    const res = await supabaseService.saveItem({ ...suggestForm, status: 'pending' });
-                    if(res.success && res.data) {
-                       setItemsDB(prev => [...prev, res.data as EvaluationItem]);
-                       handleSelectItem(activeCardIdForSuggest!, res.data as EvaluationItem);
-                       setShowSuggestModal(false);
-                    }
-                    setIsSaving(false);
-                 }} className="flex-1 bg-blue-600 text-white py-3 rounded-xl font-black text-[11px]">حفظ</button>
-                 <button onClick={() => setShowSuggestModal(false)} className="flex-1 bg-gray-100 text-gray-400 py-3 rounded-xl font-black text-[11px]">إغلاق</button>
-              </div>
-           </div>
-        </div>
-      )}
     </div>
   );
 };
