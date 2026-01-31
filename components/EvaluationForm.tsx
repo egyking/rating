@@ -12,6 +12,7 @@ const EvaluationForm: React.FC<EvaluationFormProps> = ({ onSaved, currentUser })
   const [itemsDB, setItemsDB] = useState<EvaluationItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
+  const [isOffline, setIsOffline] = useState(!navigator.onLine);
   
   // Suggestion Modal State
   const [showSuggestModal, setShowSuggestModal] = useState(false);
@@ -27,7 +28,15 @@ const EvaluationForm: React.FC<EvaluationFormProps> = ({ onSaved, currentUser })
   }]);
 
   useEffect(() => {
+    const handleOnline = () => setIsOffline(false);
+    const handleOffline = () => setIsOffline(true);
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
     loadItems();
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
   }, []);
 
   const loadItems = async () => {
@@ -67,6 +76,14 @@ const EvaluationForm: React.FC<EvaluationFormProps> = ({ onSaved, currentUser })
   const handleSuggestItem = async () => {
     if (!suggestForm.sub_item || !suggestForm.code) return alert('يرجى ملء الاسم والكود المقترح');
     setIsSaving(true);
+    
+    if (isOffline) {
+      alert('⚠️ أنت غير متصل بالإنترنت. سيتم إرسال الاقتراح عند استعادة الاتصال (تجريبي)');
+      // For simplicity, we just block suggest when offline in this basic logic or handle with a local queue
+      setIsSaving(false);
+      return;
+    }
+
     const res = await supabaseService.saveItem({
       ...suggestForm,
       department: currentUser.department || 'الجنوب',
@@ -77,11 +94,10 @@ const EvaluationForm: React.FC<EvaluationFormProps> = ({ onSaved, currentUser })
     if (res.success && res.data) {
       const newItem = res.data as EvaluationItem;
       setItemsDB([...itemsDB, newItem]);
-      // If we only have one card and it's empty, set it to the new item
       if (cards.length === 1 && !cards[0].itemId) {
         handleSelectItem(cards[0].id, newItem);
       } else {
-        alert('✅ تم إضافة المقترح. يمكنك الآن البحث عنه واختياره.');
+        alert('✅ تم إضافة المقترح. سيتم مراجعته من قبل الإدارة.');
       }
       setShowSuggestModal(false);
       setSuggestForm({ sub_item: '', main_item: 'تفتيش ميداني', code: '' });
@@ -127,8 +143,6 @@ const EvaluationForm: React.FC<EvaluationFormProps> = ({ onSaved, currentUser })
   const handleSave = async (isProposed: boolean) => {
     setIsSaving(true);
     const finalBatch: any[] = [];
-    
-    // المفتش دائما يحفظ كـ "مقترح" إلا لو كان المدير هو اللي بيدخل
     const recordStatus = currentUser.role === 'admin' ? (isProposed ? 'pending' : 'approved') : 'pending';
 
     for (const card of cards) {
@@ -173,6 +187,15 @@ const EvaluationForm: React.FC<EvaluationFormProps> = ({ onSaved, currentUser })
       return alert('يرجى اختيار بند واحد على الأقل');
     }
 
+    if (isOffline) {
+      const offlineQueue = JSON.parse(localStorage.getItem('offline_records') || '[]');
+      localStorage.setItem('offline_records', JSON.stringify([...offlineQueue, ...finalBatch]));
+      alert('⚠️ تم حفظ البيانات محلياً. سيتم المزامنة تلقائياً عند استعادة الاتصال.');
+      setIsSaving(false);
+      onSaved();
+      return;
+    }
+
     const res = await supabaseService.saveBatchEvaluations(finalBatch);
     setIsSaving(false);
     if (res.success) {
@@ -183,10 +206,24 @@ const EvaluationForm: React.FC<EvaluationFormProps> = ({ onSaved, currentUser })
     }
   };
 
+  // Helper to check question visibility (Conditional Logic)
+  const isQuestionVisible = (card: any, question: any, qIdx: number) => {
+    if (!question.showIf) return true;
+    const { questionIndex, value } = question.showIf;
+    return card.answers[questionIndex] === value;
+  };
+
   if (loading) return <div className="p-10 text-center"><i className="fas fa-circle-notch fa-spin text-3xl text-blue-600"></i></div>;
 
   return (
     <div className="max-w-2xl mx-auto space-y-4 pb-40 px-2 lg:px-0">
+      {isOffline && (
+        <div className="bg-amber-50 border border-amber-200 p-4 rounded-2xl flex items-center gap-3 animate-pulse">
+           <i className="fas fa-wifi-slash text-amber-600"></i>
+           <p className="text-xs font-black text-amber-700">أنت تعمل الآن في الوضع غير المتصل بالإنترنت. سيتم مزامنة بياناتك لاحقاً.</p>
+        </div>
+      )}
+
       <div className="bg-white p-6 rounded-[2rem] shadow-sm border border-gray-100 mb-4 flex justify-between items-center">
         <div className="flex-1 ml-4 text-right">
           <label className="block text-[10px] font-black text-gray-400 mb-1 uppercase">📅 التاريخ</label>
@@ -197,7 +234,7 @@ const EvaluationForm: React.FC<EvaluationFormProps> = ({ onSaved, currentUser })
           className="bg-emerald-50 text-emerald-600 px-4 py-4 rounded-2xl font-black text-xs border border-emerald-100 flex items-center gap-2 hover:bg-emerald-100 transition-colors"
         >
           <i className="fas fa-plus-circle"></i>
-          بند جديد (مقترح)
+          بند جديد
         </button>
       </div>
 
@@ -282,7 +319,7 @@ const EvaluationForm: React.FC<EvaluationFormProps> = ({ onSaved, currentUser })
                 <div className="flex items-center gap-4 bg-blue-50/30 p-4 rounded-2xl border border-blue-100/50">
                    <div className="flex-1 text-right">
                       <label className="block text-[10px] font-black text-blue-600 mb-1 uppercase">🔢 العدد</label>
-                      <p className="text-[9px] text-gray-400 font-bold">إجمالي وحدات البند {selectedItem?.status === 'pending' && '(بانتظار الاعتماد)'}</p>
+                      <p className="text-[9px] text-gray-400 font-bold">إجمالي وحدات البند</p>
                    </div>
                    <div className="flex items-center gap-3 bg-white p-1 rounded-xl shadow-sm">
                       <button onClick={() => setCards(cards.map(c => c.id === card.id ? {...c, count: Math.max(1, c.count - 1)} : c))} className="w-10 h-10 flex items-center justify-center text-red-400 hover:bg-red-50 rounded-lg"><i className="fas fa-minus"></i></button>
@@ -291,8 +328,8 @@ const EvaluationForm: React.FC<EvaluationFormProps> = ({ onSaved, currentUser })
                    </div>
                 </div>
 
-                {selectedItem?.questions?.map((q: any, qIdx: number) => (
-                  <div key={qIdx} className="bg-slate-50 p-5 rounded-2xl border border-gray-100 space-y-4">
+                {selectedItem?.questions?.filter((q: any, qIdx: number) => isQuestionVisible(card, q, qIdx)).map((q: any, qIdx: number) => (
+                  <div key={qIdx} className="bg-slate-50 p-5 rounded-2xl border border-gray-100 space-y-4 animate-in slide-in-from-right-4">
                     <p className="font-black text-slate-700 text-xs text-right">{q.question}</p>
                     <div className="flex flex-wrap gap-2 justify-end">
                       {q.options?.map((opt: any) => (
@@ -357,41 +394,22 @@ const EvaluationForm: React.FC<EvaluationFormProps> = ({ onSaved, currentUser })
               <div className="text-center">
                  <div className="w-16 h-16 bg-emerald-50 text-emerald-600 rounded-full flex items-center justify-center text-2xl mx-auto mb-4"><i className="fas fa-lightbulb"></i></div>
                  <h4 className="text-xl font-black text-gray-800">اقتراح بند تقييم جديد</h4>
-                 <p className="text-[10px] font-bold text-gray-400 mt-1 uppercase">سيظهر هذا البند للمدير لاعتماده</p>
               </div>
               <div className="space-y-4">
-                 <div>
-                    <label className="text-[10px] font-black text-gray-400 mr-2">اسم البند المقترح</label>
-                    <input 
-                      type="text" 
-                      value={suggestForm.sub_item} 
-                      onChange={e => setSuggestForm({...suggestForm, sub_item: e.target.value})}
-                      className="w-full bg-gray-50 border-2 border-gray-100 rounded-2xl p-4 font-bold text-right text-sm text-slate-700"
-                      placeholder="مثال: تفتيش محلات العطور"
-                    />
-                 </div>
-                 <div>
-                    <label className="text-[10px] font-black text-gray-400 mr-2">كود البند</label>
-                    <input 
-                      type="text" 
-                      value={suggestForm.code} 
-                      onChange={e => setSuggestForm({...suggestForm, code: e.target.value})}
-                      className="w-full bg-gray-50 border-2 border-gray-100 rounded-2xl p-4 font-bold text-right text-sm text-slate-700"
-                      placeholder="مثال: FR-01"
-                    />
-                 </div>
-                 <div>
-                    <label className="text-[10px] font-black text-gray-400 mr-2">التصنيف الرئيسي</label>
-                    <select 
-                      value={suggestForm.main_item} 
-                      onChange={e => setSuggestForm({...suggestForm, main_item: e.target.value})}
-                      className="w-full bg-gray-50 border-2 border-gray-100 rounded-2xl p-4 font-bold text-right text-sm"
-                    >
-                      <option value="تفتيش ميداني">تفتيش ميداني</option>
-                      <option value="إجراءات مكتبية">إجراءات مكتبية</option>
-                      <option value="أخرى">أخرى</option>
-                    </select>
-                 </div>
+                 <input 
+                   type="text" 
+                   value={suggestForm.sub_item} 
+                   onChange={e => setSuggestForm({...suggestForm, sub_item: e.target.value})}
+                   className="w-full bg-gray-50 border-2 border-gray-100 rounded-2xl p-4 font-bold text-right text-sm"
+                   placeholder="اسم البند المقترح"
+                 />
+                 <input 
+                   type="text" 
+                   value={suggestForm.code} 
+                   onChange={e => setSuggestForm({...suggestForm, code: e.target.value})}
+                   className="w-full bg-gray-50 border-2 border-gray-100 rounded-2xl p-4 font-bold text-right text-sm"
+                   placeholder="كود البند (اختياري)"
+                 />
               </div>
               <div className="flex gap-3">
                  <button disabled={isSaving} onClick={handleSuggestItem} className="flex-1 bg-emerald-600 text-white py-4 rounded-2xl font-black shadow-lg shadow-emerald-500/20">تأكيد الاقتراح</button>

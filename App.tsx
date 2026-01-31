@@ -7,7 +7,8 @@ import TargetsView from './components/TargetsView';
 import SettingsView from './components/SettingsView';
 import ReportsView from './components/ReportsView';
 import Login from './components/Login';
-import { AuthUser } from './types';
+import NotificationSystem from './components/NotificationSystem';
+import { AuthUser, AppNotification } from './types';
 import { supabaseService } from './supabase';
 
 const App: React.FC = () => {
@@ -17,6 +18,8 @@ const App: React.FC = () => {
   const [showProfileModal, setShowProfileModal] = useState(false);
   const [newPass, setNewPass] = useState('');
   const [isUpdatingPass, setIsUpdatingPass] = useState(false);
+  const [isOnline, setIsOnline] = useState(navigator.onLine);
+  const [isSyncing, setIsSyncing] = useState(false);
 
   useEffect(() => {
     const savedUser = localStorage.getItem('app_user');
@@ -25,7 +28,45 @@ const App: React.FC = () => {
       setUser(parsedUser);
       if (parsedUser.role === 'inspector') setActiveTab('form');
     }
+
+    const handleStatusChange = () => {
+      setIsOnline(navigator.onLine);
+    };
+    window.addEventListener('online', handleStatusChange);
+    window.addEventListener('offline', handleStatusChange);
+    return () => {
+      window.removeEventListener('online', handleStatusChange);
+      window.removeEventListener('offline', handleStatusChange);
+    };
   }, []);
+
+  useEffect(() => {
+    if (isOnline && user) {
+      syncOfflineData();
+    }
+  }, [isOnline, user]);
+
+  const syncOfflineData = async () => {
+    const offlineRecords = JSON.parse(localStorage.getItem('offline_records') || '[]');
+    if (offlineRecords.length === 0) return;
+
+    setIsSyncing(true);
+    try {
+      const res = await supabaseService.saveBatchEvaluations(offlineRecords);
+      if (res.success) {
+        localStorage.removeItem('offline_records');
+        await supabaseService.createNotification({
+          user_id: user?.id,
+          title: 'تمت المزامنة بنجاح',
+          message: `تم رفع ${offlineRecords.length} سجلات كانت مخزنة محلياً.`,
+          type: 'sync'
+        });
+      }
+    } catch (e) {
+      console.error('Sync failed', e);
+    }
+    setIsSyncing(false);
+  };
 
   const handleLogin = (u: AuthUser) => {
     setUser(u);
@@ -116,17 +157,35 @@ const App: React.FC = () => {
 
       {/* Main Content Area */}
       <main className="flex-1 overflow-y-auto custom-scrollbar relative flex flex-col">
-        {/* Mobile Header */}
-        <header className="lg:hidden bg-white border-b border-gray-100 p-4 flex justify-between items-center sticky top-0 z-40">
-          <button onClick={() => setShowProfileModal(true)} className="flex items-center gap-3">
-             <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center text-white text-sm">
-                <i className="fas fa-user"></i>
-             </div>
-             <span className="font-black text-gray-800 text-sm">{user.fullName}</span>
-          </button>
-          <button onClick={handleLogout} className="text-gray-400 hover:text-red-500 p-2">
-             <i className="fas fa-sign-out-alt"></i>
-          </button>
+        {/* Header */}
+        <header className="bg-white border-b border-gray-100 p-4 flex justify-between items-center sticky top-0 z-40">
+          <div className="flex items-center gap-4">
+            <button onClick={() => setSidebarOpen(!isSidebarOpen)} className="lg:hidden text-gray-500 p-2">
+              <i className="fas fa-bars"></i>
+            </button>
+            <div className="hidden lg:flex items-center gap-2">
+               {isOnline ? (
+                 <span className="bg-emerald-100 text-emerald-600 px-3 py-1 rounded-full text-[10px] font-black flex items-center gap-1">
+                   <span className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-pulse"></span> متصل
+                 </span>
+               ) : (
+                 <span className="bg-red-100 text-red-600 px-3 py-1 rounded-full text-[10px] font-black flex items-center gap-1">
+                   <span className="w-1.5 h-1.5 bg-red-500 rounded-full"></span> غير متصل
+                 </span>
+               )}
+               {isSyncing && <span className="text-[10px] text-blue-500 font-bold animate-bounce"><i className="fas fa-sync fa-spin"></i> جارِ المزامنة...</span>}
+            </div>
+          </div>
+          
+          <div className="flex items-center gap-3">
+            <NotificationSystem user={user} onNavigate={(tab) => setActiveTab(tab)} />
+            <button onClick={() => setShowProfileModal(true)} className="hidden md:flex items-center gap-3 p-1.5 pr-4 bg-gray-50 rounded-2xl hover:bg-gray-100 transition-all border border-gray-100">
+               <span className="font-black text-gray-800 text-xs">{user.fullName}</span>
+               <div className="w-8 h-8 bg-blue-600 rounded-xl flex items-center justify-center text-white text-[10px] font-black">
+                  {user.fullName.charAt(0)}
+               </div>
+            </button>
+          </div>
         </header>
 
         <div className="p-4 lg:p-8 max-w-[1400px] mx-auto w-full flex-1">
@@ -140,14 +199,14 @@ const App: React.FC = () => {
           </div>
         </div>
 
-        {/* Profile / Change Password Modal */}
+        {/* Profile Modal */}
         {showProfileModal && (
           <div className="fixed inset-0 z-[100] flex items-center justify-center p-6 bg-slate-900/60 backdrop-blur-sm">
              <div className="bg-white w-full max-w-sm rounded-[3rem] p-10 space-y-6 shadow-2xl animate-in zoom-in duration-200">
                 <div className="text-center">
                    <div className="w-20 h-20 bg-blue-600 text-white rounded-3xl mx-auto flex items-center justify-center text-3xl shadow-lg mb-6"><i className="fas fa-user-shield"></i></div>
                    <h4 className="text-xl font-black text-gray-800">{user.fullName}</h4>
-                   <p className="text-xs font-bold text-gray-400 uppercase mt-1">تحديث بيانات الدخول</p>
+                   <p className="text-xs font-bold text-gray-400 uppercase mt-1">تحديث البيانات</p>
                 </div>
                 <div className="space-y-4">
                    <div className="space-y-2">
@@ -162,7 +221,7 @@ const App: React.FC = () => {
                    </div>
                 </div>
                 <div className="flex gap-3">
-                   <button disabled={isUpdatingPass} onClick={handleChangeOwnPassword} className="flex-1 bg-blue-600 text-white py-4 rounded-2xl font-black shadow-lg shadow-blue-500/20">حفظ التغييرات</button>
+                   <button disabled={isUpdatingPass} onClick={handleChangeOwnPassword} className="flex-1 bg-blue-600 text-white py-4 rounded-2xl font-black shadow-lg shadow-blue-500/20">حفظ</button>
                    <button onClick={() => setShowProfileModal(false)} className="flex-1 bg-gray-100 text-gray-400 py-4 rounded-2xl font-black">إغلاق</button>
                 </div>
              </div>
@@ -181,7 +240,6 @@ const App: React.FC = () => {
             >
               <i className={`fas ${item.icon} text-lg`}></i>
               <span className="text-[9px] font-black">{item.label}</span>
-              {activeTab === item.id && <div className="w-1 h-1 bg-blue-600 rounded-full mt-0.5"></div>}
             </button>
           ))}
           {user.role === 'admin' && (
@@ -192,7 +250,7 @@ const App: React.FC = () => {
               }`}
             >
               <i className="fas fa-cog text-lg"></i>
-              <span className="text-[9px] font-black">المزيد</span>
+              <span className="text-[9px] font-black">الإعدادات</span>
             </button>
           )}
         </nav>

@@ -3,12 +3,17 @@
 <html lang="ar" dir="rtl">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=0" />
-    <title>نظام إدارة تقييم الأداء الاحترافي</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=0, viewport-fit=cover" />
+    <title>نظام الجنوب - إدارة التفتيش</title>
     <link rel="manifest" href="/manifest.json">
     <meta name="theme-color" content="#0f172a">
+    
+    <!-- iOS support -->
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="نظام الجنوب">
+    <link rel="apple-touch-icon" href="https://cdn-icons-png.flaticon.com/512/1162/1162456.png">
+    
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
     <link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700;800&display=swap" rel="stylesheet">
@@ -17,6 +22,8 @@
         font-family: 'Tajawal', sans-serif; 
         scroll-behavior: smooth; 
         -webkit-tap-highlight-color: transparent;
+        /* منع سحب الصفحة للتحديث في الموبايل لتعزيز شعور التطبيق الأصلي */
+        overscroll-behavior-y: contain;
       }
       .custom-scrollbar::-webkit-scrollbar { width: 4px; }
       .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
@@ -28,12 +35,11 @@
       }
       .print-only { display: none; }
       
-      /* Apple-specific safe area padding */
       .pb-safe {
         padding-bottom: env(safe-area-inset-bottom);
       }
       
-      /* Form focus fix for mobile zoom */
+      /* تحسين استجابة حقول الإدخال في الموبايل */
       input, select, textarea {
         font-size: 16px !important;
       }

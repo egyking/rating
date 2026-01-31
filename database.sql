@@ -26,7 +26,7 @@ CREATE TABLE IF NOT EXISTS inspectors (
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
--- 2. جدول بنود التقييم (تحديث ليشمل الحالة)
+-- 2. جدول بنود التقييم
 CREATE TABLE IF NOT EXISTS evaluation_items (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     sub_item TEXT NOT NULL,
@@ -77,5 +77,18 @@ CREATE TABLE IF NOT EXISTS targets (
     target_value INTEGER NOT NULL,
     start_date DATE NOT NULL,
     end_date DATE NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- 5. جدول التنبيهات (الجديد)
+CREATE TABLE IF NOT EXISTS notifications (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID REFERENCES inspectors(id) ON DELETE CASCADE,
+    role_target TEXT, -- 'admin' or NULL
+    title TEXT NOT NULL,
+    message TEXT NOT NULL,
+    type TEXT DEFAULT 'info', -- 'approval', 'target', 'sync'
+    is_read BOOLEAN DEFAULT false,
+    link TEXT,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );

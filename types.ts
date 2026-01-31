@@ -61,6 +61,18 @@ export interface Target {
   end_date: string;
 }
 
+export interface AppNotification {
+  id: string;
+  user_id?: string;
+  role_target?: string;
+  title: string;
+  message: string;
+  type: 'approval' | 'target' | 'sync' | 'info';
+  is_read: boolean;
+  link?: string;
+  created_at: string;
+}
+
 export interface Holiday {
   id: string;
   date: string;

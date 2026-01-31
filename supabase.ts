@@ -1,6 +1,6 @@
 
 import { createClient } from '@supabase/supabase-js';
-import { EvaluationRecord, Inspector, EvaluationItem, Target, Holiday, AuthUser } from './types';
+import { EvaluationRecord, Inspector, EvaluationItem, Target, Holiday, AuthUser, AppNotification } from './types';
 
 const supabaseUrl = 'https://ipwfkgahrlkfccobgejm.supabase.co';
 const supabaseKey = process.env.SUPABASE_KEY || process.env.SUPABASE_ANON_KEY || 'sb_publishable_rjL24yhlKKqKKXFaxRHXPQ_4_2CDsrf';
@@ -10,6 +10,25 @@ export const supabase = createClient(supabaseUrl, supabaseKey);
 const ADMIN_UUID = '00000000-0000-0000-0000-000000000000';
 
 export const supabaseService = {
+  // Notifications
+  getNotifications: async (userId: string, role: string) => {
+    const { data } = await supabase
+      .from('notifications')
+      .select('*')
+      .or(`user_id.eq.${userId},role_target.eq.${role}`)
+      .order('created_at', { ascending: false })
+      .limit(10);
+    return (data as AppNotification[]) || [];
+  },
+
+  createNotification: async (notif: Partial<AppNotification>) => {
+    await supabase.from('notifications').insert([notif]);
+  },
+
+  markNotificationRead: async (id: string) => {
+    await supabase.from('notifications').update({ is_read: true }).eq('id', id);
+  },
+
   getInspectors: async () => {
     const { data } = await supabase.from('inspectors').select('*').order('name');
     return data || [];
@@ -84,6 +103,15 @@ export const supabaseService = {
   
   saveItem: async (item: Partial<EvaluationItem>) => {
     const { data, error } = await supabase.from('evaluation_items').insert([item]).select();
+    if (!error && item.status === 'pending') {
+      await supabaseService.createNotification({
+        role_target: 'admin',
+        title: 'بند جديد بانتظار الاعتماد',
+        message: `تم اقتراح بند جديد: ${item.sub_item}`,
+        type: 'approval',
+        link: 'settings'
+      });
+    }
     return { success: !error, data: data?.[0], error };
   },
 
@@ -108,6 +136,20 @@ export const supabaseService = {
     }));
 
     const { data, error } = await supabase.from('evaluation_records').insert(cleanEvals).select();
+    
+    if (!error && evaluations.length > 0) {
+      const isPending = cleanEvals.some(e => e.status === 'pending');
+      if (isPending) {
+        await supabaseService.createNotification({
+          role_target: 'admin',
+          title: 'تقييمات جديدة بانتظار الاعتماد',
+          message: `تم إرسال ${cleanEvals.length} حركات جديدة من قبل ${cleanEvals[0].inspector_name}`,
+          type: 'approval',
+          link: 'settings'
+        });
+      }
+    }
+    
     return { success: !error, count: data?.length || 0, error };
   },
 
@@ -122,6 +164,7 @@ export const supabaseService = {
     if (filters?.dateFrom) query = query.gte('date', filters.dateFrom);
     if (filters?.dateTo) query = query.lte('date', filters.dateTo);
     if (filters?.status) query = query.eq('status', filters.status);
+    if (filters?.sub_item) query = query.ilike('sub_item', `%${filters.sub_item}%`);
     const { data } = await query;
     return (data as EvaluationRecord[]) || [];
   },
