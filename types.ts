@@ -79,7 +79,7 @@ export interface Holiday {
   name: string;
 }
 
-// --- Analytics & Reporting Types ---
+// --- Analytics & Deep Reporting Types ---
 
 export interface ReportFilter {
   dateFrom: string;
@@ -89,29 +89,59 @@ export interface ReportFilter {
   status?: string;
 }
 
+export interface AdvancedPerformanceMetric {
+  inspectorId: string;
+  inspectorName: string;
+  
+  // Volume Metrics
+  totalRecords: number;
+  totalUnits: number;
+  avgDailyUnits: number;
+  
+  // Quality Metrics
+  approvalRate: number; // 0-100
+  qualityScore: number; // Normalized 0-10
+  
+  // Commitment Metrics
+  daysExpected: number;
+  daysActive: number;
+  commitmentRate: number; // 0-100
+  missedDays: number;
+  
+  // Target Metrics
+  targetValue: number;
+  targetAchievement: number; // 0-100 (capped or uncapped)
+  
+  // The Composite Score
+  weightedScore: number; // 0-100
+  scoreGrade: 'A' | 'B' | 'C' | 'D' | 'F';
+  
+  // Risk
+  riskFlags: string[];
+  riskLevel: 'low' | 'medium' | 'high' | 'critical';
+}
+
+export interface ItemPerformance {
+  mainItem: string;
+  subItem: string;
+  count: number;
+  percentage: number; // Share of total work
+  avgPerDay: number;
+}
+
+export interface ComparativeMatrixRow {
+  inspectorName: string;
+  weightedScore: number;
+  targetAchieved: number;
+  commitment: number;
+  quality: number;
+  dailyAvg: number;
+  riskLevel: string;
+}
+
 export interface KPIMetric {
   label: string;
   value: number | string;
-  change?: number; // percentage change
-  trend?: 'up' | 'down' | 'neutral';
-  color?: 'blue' | 'emerald' | 'orange' | 'red';
-  icon?: string;
-}
-
-export interface InspectorPerformance {
-  inspectorId: string;
-  inspectorName: string;
-  totalInspections: number; // Unique visits/records
-  totalItems: number; // Sum of counts
-  approvedItems: number;
-  pendingItems: number;
-  approvalRate: number;
-  score: number;
-  riskFactor: 'low' | 'medium' | 'high';
-}
-
-export interface CategoryBreakdown {
-  name: string;
-  value: number;
-  percentage: number;
+  icon: string;
+  color: string;
 }

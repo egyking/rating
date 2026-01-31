@@ -1,6 +1,6 @@
 
 import * as XLSX from 'xlsx';
-import { EvaluationRecord, InspectorPerformance } from '../types';
+import { EvaluationRecord, ComparativeMatrixRow, ItemPerformance } from '../types';
 
 export const exportToExcel = (data: EvaluationRecord[], fileName: string = 'تقرير_الإنجاز') => {
   if (!data || data.length === 0) {
@@ -22,7 +22,6 @@ export const exportToExcel = (data: EvaluationRecord[], fileName: string = 'تق
     'إجابات إضافية': r.answers ? JSON.stringify(r.answers) : '-'
   })));
 
-  // Auto-width for columns
   const wscols = [
     {wch: 15}, {wch: 25}, {wch: 30}, {wch: 20}, {wch: 10}, 
     {wch: 15}, {wch: 10}, {wch: 20}, {wch: 30}, {wch: 15}, {wch: 40}
@@ -36,33 +35,33 @@ export const exportToExcel = (data: EvaluationRecord[], fileName: string = 'تق
   XLSX.writeFile(workbook, `${fileName}_${dateStr}.xlsx`);
 };
 
-export const exportAnalyticsReport = (
-  performanceData: InspectorPerformance[], 
-  categoryData: any[], 
-  fileName: string = 'تقرير_التحليل_الشامل'
+export const exportDeepReport = (
+  matrix: ComparativeMatrixRow[], 
+  itemAnalysis: ItemPerformance[], 
+  fileName: string = 'التقرير_الشامل'
 ) => {
   const wb = XLSX.utils.book_new();
 
-  // Sheet 1: Performance
-  const perfWS = XLSX.utils.json_to_sheet(performanceData.map(p => ({
-    'المفتش': p.inspectorName,
-    'النقاط': p.score,
-    'إجمالي الحركات': p.totalInspections,
-    'إجمالي الوحدات': p.totalItems,
-    'المعتمد': p.approvedItems,
-    'المعلق': p.pendingItems,
-    'نسبة الاعتماد %': p.approvalRate,
-    'مؤشر الخطر': p.riskFactor === 'high' ? 'عالي' : (p.riskFactor === 'medium' ? 'متوسط' : 'منخفض')
+  // Sheet 1: Matrix
+  const matrixWS = XLSX.utils.json_to_sheet(matrix.map(m => ({
+    'المفتش': m.inspectorName,
+    'الدرجة الموزونة': m.weightedScore,
+    'تحقيق المستهدف %': m.targetAchieved,
+    'نسبة الالتزام %': m.commitment,
+    'درجة الجودة %': m.quality,
+    'المعدل اليومي': m.dailyAvg,
+    'مستوى الخطورة': m.riskLevel === 'low' ? 'منخفض' : (m.riskLevel === 'medium' ? 'متوسط' : 'عالي')
   })));
-  XLSX.utils.book_append_sheet(wb, perfWS, "أداء المفتشين");
+  XLSX.utils.book_append_sheet(wb, matrixWS, "مصفوفة الأداء");
 
-  // Sheet 2: Categories
-  const catWS = XLSX.utils.json_to_sheet(categoryData.map(c => ({
-    'البند الرئيسي': c.name,
-    'العدد': c.value,
-    'النسبة %': c.percentage
+  // Sheet 2: Item Analysis
+  const itemsWS = XLSX.utils.json_to_sheet(itemAnalysis.map(i => ({
+    'البند الرئيسي': i.mainItem,
+    'البند الفرعي': i.subItem,
+    'العدد': i.count,
+    'النسبة من الإجمالي %': i.percentage
   })));
-  XLSX.utils.book_append_sheet(wb, catWS, "تحليل البنود");
+  XLSX.utils.book_append_sheet(wb, itemsWS, "تحليل البنود");
 
   const dateStr = new Date().toISOString().split('T')[0];
   XLSX.writeFile(wb, `${fileName}_${dateStr}.xlsx`);
