@@ -1,21 +1,5 @@
 
--- التأكد من وجود عمود كلمة المرور في جدول المفتشين
-DO $$ 
-BEGIN 
-    IF NOT EXISTS (SELECT 1 FROM pg_attribute WHERE attrelid = 'inspectors'::regclass AND attname = 'password') THEN
-        ALTER TABLE inspectors ADD COLUMN password TEXT DEFAULT '123456';
-    END IF;
-END $$;
-
--- التأكد من وجود عمود الصلاحية في جدول المفتشين
-DO $$ 
-BEGIN 
-    IF NOT EXISTS (SELECT 1 FROM pg_attribute WHERE attrelid = 'inspectors'::regclass AND attname = 'role') THEN
-        ALTER TABLE inspectors ADD COLUMN role TEXT DEFAULT 'inspector';
-    END IF;
-END $$;
-
--- 1. جدول المفتشين (الأساسي)
+-- 1. جدول المفتشين
 CREATE TABLE IF NOT EXISTS inspectors (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     name TEXT NOT NULL UNIQUE,
@@ -26,29 +10,21 @@ CREATE TABLE IF NOT EXISTS inspectors (
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
--- 2. جدول بنود التقييم
+-- 2. جدول بنود التقييم (تحديث عمود الأسئلة ليكون JSONB)
 CREATE TABLE IF NOT EXISTS evaluation_items (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     sub_item TEXT NOT NULL,
     main_item TEXT NOT NULL,
     code TEXT NOT NULL,
     department TEXT DEFAULT 'الجنوب',
-    sub_types JSONB DEFAULT '[]'::jsonb,
+    sub_types JSONB DEFAULT '[]'::jsonb, -- مصفوفة من النصوص
     once_per_day BOOLEAN DEFAULT false,
-    questions JSONB DEFAULT '[]'::jsonb,
-    status TEXT DEFAULT 'pending', -- pending, approved
+    questions JSONB DEFAULT '[]'::jsonb, -- مصفوفة من الكائنات تحتوي على (label, type, options, showIf)
+    status TEXT DEFAULT 'approved', 
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
--- إضافة عمود الحالة لبنود التقييم إذا لم يكن موجوداً
-DO $$ 
-BEGIN 
-    IF NOT EXISTS (SELECT 1 FROM pg_attribute WHERE attrelid = 'evaluation_items'::regclass AND attname = 'status') THEN
-        ALTER TABLE evaluation_items ADD COLUMN status TEXT DEFAULT 'approved';
-    END IF;
-END $$;
-
--- 3. جدول السجلات
+-- 3. جدول سجلات التقييم (حيث يتم حفظ الإجابات)
 CREATE TABLE IF NOT EXISTS evaluation_records (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
@@ -63,9 +39,9 @@ CREATE TABLE IF NOT EXISTS evaluation_records (
     department TEXT NOT NULL,
     count INTEGER DEFAULT 1,
     notes TEXT,
-    answers JSONB DEFAULT '{}'::jsonb,
+    answers JSONB DEFAULT '{}'::jsonb, -- الإجابات المولدة
     metadata JSONB DEFAULT '{}'::jsonb,
-    status TEXT DEFAULT 'pending' -- pending, approved
+    status TEXT DEFAULT 'pending'
 );
 
 -- 4. جدول المستهدفات
@@ -80,14 +56,14 @@ CREATE TABLE IF NOT EXISTS targets (
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
--- 5. جدول التنبيهات (الجديد)
+-- 5. جدول التنبيهات
 CREATE TABLE IF NOT EXISTS notifications (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id UUID REFERENCES inspectors(id) ON DELETE CASCADE,
-    role_target TEXT, -- 'admin' or NULL
+    role_target TEXT,
     title TEXT NOT NULL,
     message TEXT NOT NULL,
-    type TEXT DEFAULT 'info', -- 'approval', 'target', 'sync'
+    type TEXT DEFAULT 'info',
     is_read BOOLEAN DEFAULT false,
     link TEXT,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
