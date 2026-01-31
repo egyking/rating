@@ -1,16 +1,24 @@
 
--- 1. جدول المفتشين (تحديث ليشمل كلمة المرور)
+-- التأكد من وجود عمود كلمة المرور في جدول المفتشين
+DO $$ 
+BEGIN 
+    IF NOT EXISTS (SELECT 1 FROM pg_attribute WHERE attrelid = 'inspectors'::regclass AND attname = 'password') THEN
+        ALTER TABLE inspectors ADD COLUMN password TEXT DEFAULT '123456';
+    END IF;
+END $$;
+
+-- 1. جدول المفتشين (الأساسي)
 CREATE TABLE IF NOT EXISTS inspectors (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     name TEXT NOT NULL UNIQUE,
-    password TEXT DEFAULT '123456', -- كلمة مرور افتراضية
+    password TEXT DEFAULT '123456',
     department TEXT DEFAULT 'الجنوب',
     active BOOLEAN DEFAULT true,
     role TEXT DEFAULT 'inspector',
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
--- 2. باقي الجداول تبقى كما هي لضمان استمرارية البيانات
+-- 2. جدول بنود التقييم
 CREATE TABLE IF NOT EXISTS evaluation_items (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     sub_item TEXT NOT NULL,
@@ -23,6 +31,7 @@ CREATE TABLE IF NOT EXISTS evaluation_items (
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
+-- 3. جدول السجلات
 CREATE TABLE IF NOT EXISTS evaluation_records (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
@@ -41,6 +50,7 @@ CREATE TABLE IF NOT EXISTS evaluation_records (
     metadata JSONB DEFAULT '{}'::jsonb
 );
 
+-- 4. جدول المستهدفات
 CREATE TABLE IF NOT EXISTS targets (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     inspector_id UUID REFERENCES inspectors(id) ON DELETE CASCADE,
@@ -49,12 +59,5 @@ CREATE TABLE IF NOT EXISTS targets (
     target_value INTEGER NOT NULL,
     start_date DATE NOT NULL,
     end_date DATE NOT NULL,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
-);
-
-CREATE TABLE IF NOT EXISTS holidays (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    date DATE NOT NULL,
-    name TEXT NOT NULL,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );

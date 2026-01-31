@@ -5,6 +5,7 @@ import { EvaluationRecord } from "../types";
 export const analyzePerformance = async (records: EvaluationRecord[]) => {
   if (records.length === 0) return "لا توجد سجلات كافية لبناء نموذج تنبؤي.";
 
+  // Initialize Gemini API with API key from environment variable
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   
   const now = new Date();
@@ -16,8 +17,9 @@ export const analyzePerformance = async (records: EvaluationRecord[]) => {
   ).join('\n');
 
   try {
+    // Upgraded to gemini-3-pro-preview for complex reasoning and business analysis
     const response = await ai.models.generateContent({
-      model: "gemini-3-flash-preview",
+      model: "gemini-3-pro-preview",
       contents: `بصفتك خبير ذكاء أعمال (BI Specialist)، قم بتحليل سجلات المفتشين التالية:
       
       المعطيات: اليوم هو ${currentDay} من شهر إجمالي أيامه ${daysInMonth}.
@@ -32,6 +34,7 @@ export const analyzePerformance = async (records: EvaluationRecord[]) => {
       ${summary}`,
     });
 
+    // Access the .text property directly to get the generated response
     return response.text;
   } catch (error) {
     console.error("Gemini Error:", error);

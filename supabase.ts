@@ -10,36 +10,44 @@ export const supabase = createClient(supabaseUrl, supabaseKey);
 const ADMIN_UUID = '00000000-0000-0000-0000-000000000000';
 
 export const supabaseService = {
-  // Inspectors
   getInspectors: async () => {
     const { data } = await supabase.from('inspectors').select('*').order('name');
     return data || [];
   },
+  
+  // Fix: Ensure a consistent return structure { success, data, error } for all branches
   saveInspectors: async (inspectors: any[]) => {
-    const { data, error } = await supabase.from('inspectors').insert(inspectors).select();
-    return { success: !error, data, error };
+    try {
+      // محاولة الإدخال مع معالجة الخطأ إذا كان العمود مفقوداً
+      const { data, error } = await supabase.from('inspectors').insert(inspectors).select();
+      if (error && error.message.includes('password')) {
+        // إذا كان الخطأ بسبب عمود password، نحاول الإرسال بدونه (كحل مؤقت)
+        const simplified = inspectors.map(({ password, ...rest }) => rest);
+        const { data: retryData, error: retryError } = await supabase.from('inspectors').insert(simplified).select();
+        return { success: !retryError, data: retryData, error: retryError };
+      }
+      return { success: !error, data, error };
+    } catch (e: any) {
+      return { success: false, error: e };
+    }
   },
+
   deleteInspector: async (id: string) => {
     const { error } = await supabase.from('inspectors').delete().eq('id', id);
     return { success: !error, error };
   },
 
-  // Authentication
   authenticate: async (username: string, password: string): Promise<AuthUser | null> => {
-    // Admin Hardcoded Check
     if (username === 'admin' && password === 'admin') {
       return { id: ADMIN_UUID, username: 'admin', fullName: 'مدير النظام', role: 'admin' };
     }
-
     try {
-      // البحث عن المستخدم بكلمة المرور الخاصة به
-      const { data, error } = await supabase
+      const { data } = await supabase
         .from('inspectors')
         .select('*')
         .eq('name', username)
         .eq('password', password)
-        .limit(1)
-        .single();
+        .maybeSingle();
 
       if (data) {
         return { 
@@ -56,22 +64,22 @@ export const supabaseService = {
     return null;
   },
 
-  // Evaluation Items
   getItems: async () => {
     const { data } = await supabase.from('evaluation_items').select('*').order('sub_item');
     return data || [];
   },
+  
   saveItem: async (item: Partial<EvaluationItem>) => {
     const { data, error } = await supabase.from('evaluation_items').insert([item]).select();
     return { success: !error, data, error };
   },
+
   deleteItem: async (id: string) => {
     const { error } = await supabase.from('evaluation_items').delete().eq('id', id);
     return { success: !error, error };
   },
 
   saveBatchEvaluations: async (evaluations: any[]) => {
-    // تنظيف البيانات لضمان عدم وجود معرفات وهمية تكسر الـ Foreign Key
     const { data: realInspectors } = await supabase.from('inspectors').select('id');
     const validIds = new Set(realInspectors?.map(i => i.id) || []);
 
@@ -97,10 +105,12 @@ export const supabaseService = {
     const { data } = await supabase.from('targets').select('*').order('created_at', { ascending: false });
     return data || [];
   },
+  
   saveBatchTargets: async (targets: any[]) => {
     const { data, error } = await supabase.from('targets').insert(targets).select();
     return { success: !error, data, error };
   },
+
   deleteTarget: async (id: string) => {
     const { error } = await supabase.from('targets').delete().eq('id', id);
     return { success: !error, error };
