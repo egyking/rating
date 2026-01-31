@@ -9,7 +9,7 @@ CREATE TABLE IF NOT EXISTS inspectors (
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
--- 2. جدول بنود التقييم
+-- 2. جدول بنود التقييم (يحتوي على منطق الـ JSON)
 CREATE TABLE IF NOT EXISTS evaluation_items (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     sub_item TEXT NOT NULL,
@@ -22,24 +22,40 @@ CREATE TABLE IF NOT EXISTS evaluation_items (
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
--- 3. جدول العطلات
+-- 3. جدول السجلات (أرشيف الحركات)
+CREATE TABLE IF NOT EXISTS evaluation_records (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    date DATE NOT NULL,
+    inspector_id UUID REFERENCES inspectors(id) ON DELETE SET NULL,
+    inspector_name TEXT NOT NULL,
+    item_id UUID REFERENCES evaluation_items(id) ON DELETE SET NULL,
+    sub_item TEXT NOT NULL,
+    main_item TEXT NOT NULL,
+    sub_type TEXT,
+    code TEXT NOT NULL,
+    department TEXT NOT NULL,
+    count INTEGER DEFAULT 1,
+    notes TEXT,
+    answers JSONB DEFAULT '{}'::jsonb,
+    metadata JSONB DEFAULT '{}'::jsonb
+);
+
+-- 4. جدول المستهدفات والعطلات
+CREATE TABLE IF NOT EXISTS targets (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    inspector_id UUID REFERENCES inspectors(id) ON DELETE CASCADE,
+    inspector_name TEXT NOT NULL,
+    main_item TEXT NOT NULL DEFAULT 'جميع البنود',
+    target_value INTEGER NOT NULL,
+    start_date DATE NOT NULL,
+    end_date DATE NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
 CREATE TABLE IF NOT EXISTS holidays (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     date DATE NOT NULL,
     name TEXT NOT NULL,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
-
--- 4. تعديل جدول السجلات لإضافة الأعمدة المطلوبة
-ALTER TABLE evaluation_records 
-ADD COLUMN IF NOT EXISTS metadata JSONB DEFAULT '{}'::jsonb;
-
-ALTER TABLE evaluation_records 
-ADD COLUMN IF NOT EXISTS answers JSONB DEFAULT '{}'::jsonb;
-
-ALTER TABLE evaluation_records 
-ALTER COLUMN inspector_id DROP NOT NULL;
-
--- 5. تحديث جدول المستهدفات
-ALTER TABLE targets 
-ADD COLUMN IF NOT EXISTS main_item TEXT NOT NULL DEFAULT 'جميع البنود';
