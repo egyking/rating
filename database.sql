@@ -7,6 +7,14 @@ BEGIN
     END IF;
 END $$;
 
+-- التأكد من وجود عمود الصلاحية في جدول المفتشين
+DO $$ 
+BEGIN 
+    IF NOT EXISTS (SELECT 1 FROM pg_attribute WHERE attrelid = 'inspectors'::regclass AND attname = 'role') THEN
+        ALTER TABLE inspectors ADD COLUMN role TEXT DEFAULT 'inspector';
+    END IF;
+END $$;
+
 -- 1. جدول المفتشين (الأساسي)
 CREATE TABLE IF NOT EXISTS inspectors (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),

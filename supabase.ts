@@ -15,19 +15,34 @@ export const supabaseService = {
     return data || [];
   },
   
-  // Fix: Ensure a consistent return structure { success, data, error } for all branches
   saveInspectors: async (inspectors: any[]) => {
     try {
-      // محاولة الإدخال مع معالجة الخطأ إذا كان العمود مفقوداً
+      // محاولة الإدخال الأولية
       const { data, error } = await supabase.from('inspectors').insert(inspectors).select();
-      if (error && error.message.includes('password')) {
-        // إذا كان الخطأ بسبب عمود password، نحاول الإرسال بدونه (كحل مؤقت)
-        const simplified = inspectors.map(({ password, ...rest }) => rest);
+      
+      // إذا حدث خطأ بسبب نقص الأعمدة في السكيما (password أو role)
+      if (error && (error.message.includes('password') || error.message.includes('role'))) {
+        console.warn('Supabase Schema Cache Issue:', error.message);
+        
+        // تحديد الأعمدة المفقودة من رسالة الخطأ لتجنب إرسالها
+        const missingColumns = [];
+        if (error.message.includes('password')) missingColumns.push('password');
+        if (error.message.includes('role')) missingColumns.push('role');
+        
+        const simplified = inspectors.map(ins => {
+          const clone = { ...ins };
+          missingColumns.forEach(col => delete clone[col]);
+          return clone;
+        });
+        
+        // إعادة المحاولة بالبيانات المبسطة
         const { data: retryData, error: retryError } = await supabase.from('inspectors').insert(simplified).select();
         return { success: !retryError, data: retryData, error: retryError };
       }
+      
       return { success: !error, data, error };
     } catch (e: any) {
+      console.error('Critical Error in saveInspectors:', e);
       return { success: false, error: e };
     }
   },
