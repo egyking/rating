@@ -46,13 +46,12 @@ const EvaluationForm: React.FC<EvaluationFormProps> = ({ onSaved, currentUser })
   const [isSaving, setIsSaving] = useState(false);
   
   // State for Cards (Each card represents a flow starting from a Trigger Item)
-  // answers: تخزين إجابات الأسئلة
-  // customCounts: تخزين تعديلات المستخدم على عدادات البنود المولدة (مفتاحها هو كود البند)
   const [cards, setCards] = useState<any[]>([{ 
     id: Date.now(), 
     itemId: '', 
     answers: {}, 
-    customCounts: {}, // لتخزين العدادات المعدلة يدوياً { [generatedCode]: count }
+    customCounts: {}, // لتخزين العدادات المعدلة يدوياً للبنود المولدة
+    count: 1, // العداد الرئيسي للبند المختار نفسه
     notes: ''
   }]);
 
@@ -96,7 +95,7 @@ const EvaluationForm: React.FC<EvaluationFormProps> = ({ onSaved, currentUser })
 
   const handleSelectItem = (cardId: number, item: EvaluationItem) => {
     setCards(cards.map(c => c.id === cardId ? { 
-      ...c, itemId: item.id, answers: {}, customCounts: {} 
+      ...c, itemId: item.id, answers: {}, customCounts: {}, count: 1 
     } : c));
     setIsSearchOpen(prev => ({ ...prev, [cardId]: false }));
     setSearchQuery(prev => ({ ...prev, [cardId]: '' }));
@@ -105,19 +104,23 @@ const EvaluationForm: React.FC<EvaluationFormProps> = ({ onSaved, currentUser })
   const handleAnswerChange = (cardId: number, questionIdx: string, value: any) => {
     setCards(prevCards => prevCards.map(c => {
       if (c.id !== cardId) return c;
-      
       const newAnswers = { ...c.answers, [questionIdx]: value };
-      
-      // إذا تغيرت الإجابة، قد نحتاج لتصفية الإجابات الفرعية القديمة (اختياري، للتبسيط سنحتفظ بها)
       return { ...c, answers: newAnswers };
     }));
   };
 
-  const handleCountChange = (cardId: number, itemCode: string, delta: number) => {
+  const handleMainCountChange = (cardId: number, delta: number) => {
+    setCards(cards.map(c => {
+        if (c.id !== cardId) return c;
+        return { ...c, count: Math.max(0, (c.count || 0) + delta) };
+    }));
+  };
+
+  const handleCustomCountChange = (cardId: number, itemCode: string, delta: number) => {
     setCards(cards.map(c => {
       if (c.id !== cardId) return c;
-      const currentCount = c.customCounts[itemCode] || 1; // Default is usually 1, but we calculate strictly later
-      const newCount = Math.max(0, currentCount + delta); // Allow 0 to essentially "remove" it
+      const currentCount = c.customCounts[itemCode] || 1;
+      const newCount = Math.max(0, currentCount + delta);
       return { ...c, customCounts: { ...c.customCounts, [itemCode]: newCount } };
     }));
   };
@@ -136,15 +139,13 @@ const EvaluationForm: React.FC<EvaluationFormProps> = ({ onSaved, currentUser })
 
     const generatedItems: EvaluationOutput[] = [];
 
-    // دالة تكرارية لمعالجة الأسئلة والأسئلة الشرطية المتداخلة
     const processQuestions = (qs: QuestionSchema[], parentPrefix = '') => {
         qs.forEach((q, idx) => {
             const qKey = parentPrefix ? `${parentPrefix}_${idx}` : `${idx}`;
             const answer = card.answers[qKey];
 
-            if (!answer) return; // لم تتم الإجابة بعد
+            if (!answer) return;
 
-            // 1. معالجة التقييمات المباشرة (Direct Evaluations)
             if (q.type === 'choice' || q.type === 'choice_with_input' || q.type === 'multichoice') {
                 const selectedOptions = Array.isArray(answer) ? answer : [answer];
                 const optionsArr = Array.isArray(q.options) ? q.options : [];
@@ -156,7 +157,7 @@ const EvaluationForm: React.FC<EvaluationFormProps> = ({ onSaved, currentUser })
                     }
                 });
             } else if (q.type === 'yesno') {
-                const opts = q.options as Record<string, any>; // yes/no keys
+                const opts = q.options as Record<string, any>;
                 const selectedOpt = opts[answer as string];
                 if (selectedOpt && selectedOpt.evaluations) {
                     generatedItems.push(...selectedOpt.evaluations);
@@ -167,7 +168,6 @@ const EvaluationForm: React.FC<EvaluationFormProps> = ({ onSaved, currentUser })
                 }
             }
 
-            // 2. معالجة الأسئلة الشرطية (Conditional Questions)
             if (q.conditionalQuestions && q.conditionalQuestions[answer]) {
                 processQuestions(q.conditionalQuestions[answer], qKey);
             }
@@ -175,10 +175,6 @@ const EvaluationForm: React.FC<EvaluationFormProps> = ({ onSaved, currentUser })
     };
 
     processQuestions(questions);
-
-    // دمج النتائج المتشابهة (نفس الكود)
-    // لكن هنا سنعيدهم كقائمة، والعرض هو من يتعامل مع التجميع أو التكرار
-    // لتبسيط العرض، سنقوم بتصفية العناصر المكررة بالكامل، لكن لو اختلفت سنبقيها
     return generatedItems;
   };
 
@@ -298,7 +294,6 @@ const EvaluationForm: React.FC<EvaluationFormProps> = ({ onSaved, currentUser })
     }
   };
 
-  // دالة عرض الأسئلة بشكل تكراري (Recursive)
   const renderQuestionsRecursive = (questions: QuestionSchema[], card: any, parentPrefix = '') => {
     return questions.map((q, idx) => {
         const qKey = parentPrefix ? `${parentPrefix}_${idx}` : `${idx}`;
@@ -316,7 +311,6 @@ const EvaluationForm: React.FC<EvaluationFormProps> = ({ onSaved, currentUser })
                     {renderQuestionInput(q, qKey, card)}
                 </div>
 
-                {/* Render Conditional Nested Questions */}
                 {isAnswered && q.conditionalQuestions && q.conditionalQuestions[answer] && (
                     <div className="mr-3 pl-3 border-r-2 border-blue-100 space-y-4 mt-2">
                         {renderQuestionsRecursive(q.conditionalQuestions[answer], card, qKey)}
@@ -330,7 +324,6 @@ const EvaluationForm: React.FC<EvaluationFormProps> = ({ onSaved, currentUser })
   const handleSave = async () => {
     if (isSaving) return;
     
-    // التحقق من الحقول المطلوبة (يمكن تطويره لاحقاً)
     const validCards = cards.filter(card => card.itemId);
     if (validCards.length === 0) return alert('يرجى اختيار بند واحد على الأقل');
 
@@ -343,8 +336,8 @@ const EvaluationForm: React.FC<EvaluationFormProps> = ({ onSaved, currentUser })
 
         const generatedItems = getGeneratedEvaluations(card, itemDB);
 
-        // إذا لم يكن هناك عناصر مولدة، نستخدم البند الأساسي نفسه (Fallback)
-        if (generatedItems.length === 0) {
+        // 1. حفظ البند الرئيسي (الأب) إذا كان له عدد
+        if ((card.count || 0) > 0) {
             allRecordsToSave.push({
                 date,
                 inspector_id: currentUser.id === '00000000-0000-0000-0000-000000000000' ? null : currentUser.id,
@@ -352,50 +345,47 @@ const EvaluationForm: React.FC<EvaluationFormProps> = ({ onSaved, currentUser })
                 item_id: itemDB.id,
                 sub_item: itemDB.sub_item,
                 main_item: itemDB.main_item,
-                sub_type: '', // يمكن إضافته إذا لزم الأمر
+                sub_type: '',
                 code: itemDB.code,
                 department: itemDB.department,
-                count: 1,
+                count: card.count || 0,
                 notes: card.notes || '',
                 answers: card.answers,
                 status: 'pending'
             });
-        } else {
-            // حفظ كل بند مولد كسجل منفصل
-            generatedItems.forEach(genItem => {
-                // البحث عن العداد المخصص أو الافتراضي
-                const countKey = genItem.code; 
-                // نستخدم الكود كمفتاح. إذا تكرر نفس الكود في نفس البطاقة، سيتشاركون نفس العداد وهذا منطقي
-                // أو يمكن استخدام تركيبة (code + subItem)
-                const finalCount = card.customCounts[countKey] !== undefined 
-                    ? card.customCounts[countKey] 
-                    : (genItem.defaultCount || 1);
-
-                if (finalCount > 0) {
-                    allRecordsToSave.push({
-                        date,
-                        inspector_id: currentUser.id === '00000000-0000-0000-0000-000000000000' ? null : currentUser.id,
-                        inspector_name: currentUser.fullName,
-                        item_id: itemDB.id, // Reference to parent trigger item
-                        sub_item: genItem.subItem, // The Generated Name
-                        main_item: genItem.mainItem, // The Generated Category
-                        sub_type: '', 
-                        code: genItem.code,
-                        department: genItem.dept || itemDB.department,
-                        count: finalCount,
-                        notes: card.notes || '',
-                        answers: card.answers, // نحتفظ بالإجابات الأصلية للسياق
-                        metadata: { parent_item: itemDB.sub_item },
-                        status: 'pending'
-                    });
-                }
-            });
         }
+
+        // 2. حفظ البنود المولدة (الفرعية)
+        generatedItems.forEach(genItem => {
+            const countKey = genItem.code; 
+            const finalCount = card.customCounts[countKey] !== undefined 
+                ? card.customCounts[countKey] 
+                : (genItem.defaultCount || 1);
+
+            if (finalCount > 0) {
+                allRecordsToSave.push({
+                    date,
+                    inspector_id: currentUser.id === '00000000-0000-0000-0000-000000000000' ? null : currentUser.id,
+                    inspector_name: currentUser.fullName,
+                    item_id: itemDB.id,
+                    sub_item: genItem.subItem,
+                    main_item: genItem.mainItem,
+                    sub_type: '', 
+                    code: genItem.code,
+                    department: genItem.dept || itemDB.department,
+                    count: finalCount,
+                    notes: card.notes || '',
+                    answers: card.answers,
+                    metadata: { parent_item: itemDB.sub_item },
+                    status: 'pending'
+                });
+            }
+        });
     }
 
     if (allRecordsToSave.length === 0) {
         setIsSaving(false);
-        return alert('لا توجد بنود ذات كميات للحفظ.');
+        return alert('لا توجد سجلات ذات كميات للحفظ (تأكد من العدادات).');
     }
 
     try {
@@ -417,7 +407,6 @@ const EvaluationForm: React.FC<EvaluationFormProps> = ({ onSaved, currentUser })
 
   return (
     <div className="max-w-3xl mx-auto space-y-4 pb-40 px-2">
-      {/* Date Header */}
       <div className="bg-white px-4 py-3 rounded-2xl shadow-sm border border-gray-100 flex items-center justify-between sticky top-[60px] z-30">
         <div className="flex items-center gap-2">
            <i className="fas fa-calendar-day text-blue-500"></i>
@@ -429,13 +418,7 @@ const EvaluationForm: React.FC<EvaluationFormProps> = ({ onSaved, currentUser })
       <div className="space-y-6">
         {cards.map((card, index) => {
           const selectedItem = itemsDB.find(i => i.id === card.itemId);
-          
-          // Generate active items dynamically based on answers
           const activeGeneratedItems = getGeneratedEvaluations(card, selectedItem!);
-          
-          // Group by unique code to allow counting. 
-          // If multiple answers generate the SAME item code, we usually want one row with accumulated count, 
-          // or distinct rows? Here we assume unique items per code for simplicity of UI.
           const uniqueItemsMap = new Map<string, EvaluationOutput>();
           activeGeneratedItems.forEach(item => {
              if(!uniqueItemsMap.has(item.code)) uniqueItemsMap.set(item.code, item);
@@ -444,7 +427,6 @@ const EvaluationForm: React.FC<EvaluationFormProps> = ({ onSaved, currentUser })
 
           return (
             <div key={card.id} className="bg-white rounded-[2rem] shadow-sm border border-gray-100 overflow-visible transition-all">
-              {/* Header */}
               <div className="bg-slate-50 px-5 py-3 flex justify-between items-center border-b border-gray-100 rounded-t-[2rem]">
                 <div className="flex items-center gap-2">
                     <span className="w-6 h-6 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center text-[10px] font-black">{index + 1}</span>
@@ -458,7 +440,6 @@ const EvaluationForm: React.FC<EvaluationFormProps> = ({ onSaved, currentUser })
               </div>
               
               <div className="p-5 space-y-6">
-                {/* 1. Main Trigger Selection */}
                 <div className="relative" ref={el => { searchRefs.current[card.id] = el; }}>
                   <label className="text-[9px] font-black text-gray-400 mb-1 block uppercase">البند الرئيسي (المحفز)</label>
                   <div 
@@ -474,7 +455,6 @@ const EvaluationForm: React.FC<EvaluationFormProps> = ({ onSaved, currentUser })
                     ) : <p className="text-gray-400 text-xs font-bold">اختر نوع التفتيش...</p>}
                   </div>
                   
-                  {/* Dropdown Menu */}
                   {isSearchOpen[card.id] && (
                     <div className="absolute top-full left-0 right-0 z-[70] bg-white border border-gray-200 rounded-2xl shadow-2xl mt-2 overflow-hidden animate-in fade-in zoom-in duration-150">
                       <input 
@@ -496,7 +476,6 @@ const EvaluationForm: React.FC<EvaluationFormProps> = ({ onSaved, currentUser })
                   )}
                 </div>
 
-                {/* 2. Dynamic Questions Area */}
                 {selectedItem && (
                   <div className="space-y-6">
                     <div className="bg-white border border-gray-100 rounded-[1.5rem] p-5 space-y-5 shadow-sm">
@@ -514,52 +493,56 @@ const EvaluationForm: React.FC<EvaluationFormProps> = ({ onSaved, currentUser })
                         })()}
                     </div>
 
-                    {/* 3. Generated Evaluations List (Outputs) */}
-                    {displayItems.length > 0 && (
-                        <div className="space-y-3 animate-in slide-in-from-bottom-2 duration-500">
-                             <div className="flex items-center gap-2 mb-2">
-                                <i className="fas fa-list-check text-emerald-500"></i>
-                                <h4 className="text-[10px] font-black text-emerald-700 uppercase">النتائج المترتبة (سيتم حفظها)</h4>
-                             </div>
-                             
-                             {displayItems.map((genItem, idx) => {
-                                 const currentCount = card.customCounts[genItem.code] !== undefined 
-                                    ? card.customCounts[genItem.code] 
-                                    : (genItem.defaultCount || 1);
+                    {/* Results Area */}
+                    <div className="space-y-3 animate-in slide-in-from-bottom-2 duration-500">
+                         <div className="flex items-center gap-2 mb-2">
+                            <i className="fas fa-list-check text-emerald-500"></i>
+                            <h4 className="text-[10px] font-black text-emerald-700 uppercase">النتائج التي سيتم حفظها</h4>
+                         </div>
 
-                                 if (currentCount === 0) return null; // Hide if 0? Or show faded? Let's hide for cleanliness or show faded.
-                                 
-                                 return (
-                                     <div key={idx} className="bg-emerald-50/50 border border-emerald-100 rounded-2xl p-4 flex items-center justify-between group hover:bg-emerald-50 transition-colors">
-                                         <div className="flex-1">
-                                             <p className="font-black text-slate-800 text-xs">{genItem.subItem}</p>
-                                             <div className="flex gap-2 mt-1">
-                                                 <span className="text-[8px] bg-white px-1.5 py-0.5 rounded text-gray-500 border border-gray-100">{genItem.mainItem}</span>
-                                                 <span className="text-[8px] bg-white px-1.5 py-0.5 rounded text-blue-500 border border-blue-100 font-mono">{genItem.code}</span>
-                                             </div>
-                                         </div>
-                                         
-                                         {/* Counter Control */}
-                                         <div className="flex items-center gap-2 bg-white p-1 rounded-xl shadow-sm border border-emerald-100">
-                                            <button 
-                                                onClick={() => handleCountChange(card.id, genItem.code, -1)} 
-                                                className="w-8 h-8 flex items-center justify-center text-red-400 hover:bg-red-50 rounded-lg transition-colors"
-                                            >
-                                                <i className="fas fa-minus text-[10px]"></i>
-                                            </button>
-                                            <span className="w-6 text-center font-black text-sm text-slate-800">{currentCount}</span>
-                                            <button 
-                                                onClick={() => handleCountChange(card.id, genItem.code, 1)} 
-                                                className="w-8 h-8 flex items-center justify-center text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors"
-                                            >
-                                                <i className="fas fa-plus text-[10px]"></i>
-                                            </button>
+                         {/* 1. Main Item Counter */}
+                         <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 flex items-center justify-between shadow-sm">
+                             <div className="flex-1">
+                                 <p className="font-black text-slate-800 text-xs">{selectedItem.sub_item}</p>
+                                 <div className="flex gap-2 mt-1">
+                                     <span className="text-[8px] bg-slate-200 px-1.5 py-0.5 rounded text-slate-600 font-bold">بند رئيسي</span>
+                                     <span className="text-[8px] bg-white px-1.5 py-0.5 rounded text-blue-500 border border-blue-100 font-mono">{selectedItem.code}</span>
+                                 </div>
+                             </div>
+                             <div className="flex items-center gap-2 bg-white p-1 rounded-xl shadow-sm border border-slate-200">
+                                <button onClick={() => handleMainCountChange(card.id, -1)} className="w-8 h-8 flex items-center justify-center text-red-400 hover:bg-red-50 rounded-lg transition-colors"><i className="fas fa-minus text-[10px]"></i></button>
+                                <span className="w-6 text-center font-black text-sm text-slate-800">{card.count || 0}</span>
+                                <button onClick={() => handleMainCountChange(card.id, 1)} className="w-8 h-8 flex items-center justify-center text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors"><i className="fas fa-plus text-[10px]"></i></button>
+                             </div>
+                         </div>
+                         
+                         {/* 2. Generated Items */}
+                         {displayItems.map((genItem, idx) => {
+                             const currentCount = card.customCounts[genItem.code] !== undefined 
+                                ? card.customCounts[genItem.code] 
+                                : (genItem.defaultCount || 1);
+
+                             if (currentCount === 0) return null;
+                             
+                             return (
+                                 <div key={idx} className="bg-emerald-50/50 border border-emerald-100 rounded-2xl p-4 flex items-center justify-between group hover:bg-emerald-50 transition-colors">
+                                     <div className="flex-1">
+                                         <p className="font-black text-slate-800 text-xs">{genItem.subItem}</p>
+                                         <div className="flex gap-2 mt-1">
+                                             <span className="text-[8px] bg-white px-1.5 py-0.5 rounded text-gray-500 border border-gray-100">{genItem.mainItem}</span>
+                                             <span className="text-[8px] bg-white px-1.5 py-0.5 rounded text-blue-500 border border-blue-100 font-mono">{genItem.code}</span>
                                          </div>
                                      </div>
-                                 );
-                             })}
-                        </div>
-                    )}
+                                     <div className="flex items-center gap-2 bg-white p-1 rounded-xl shadow-sm border border-emerald-100">
+                                        <button onClick={() => handleCustomCountChange(card.id, genItem.code, -1)} className="w-8 h-8 flex items-center justify-center text-red-400 hover:bg-red-50 rounded-lg transition-colors"><i className="fas fa-minus text-[10px]"></i></button>
+                                        <span className="w-6 text-center font-black text-sm text-slate-800">{currentCount}</span>
+                                        <button onClick={() => handleCustomCountChange(card.id, genItem.code, 1)} className="w-8 h-8 flex items-center justify-center text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors"><i className="fas fa-plus text-[10px]"></i></button>
+                                     </div>
+                                 </div>
+                             );
+                         })}
+                    </div>
+
                   </div>
                 )}
               </div>
@@ -568,10 +551,9 @@ const EvaluationForm: React.FC<EvaluationFormProps> = ({ onSaved, currentUser })
         })}
       </div>
 
-      {/* Footer Actions */}
       <div className="fixed bottom-20 lg:bottom-10 left-4 right-4 flex gap-3 z-50">
         <button 
-          onClick={() => setCards([...cards, { id: Date.now(), itemId: '', answers: {}, customCounts: {}, notes: '' }])} 
+          onClick={() => setCards([...cards, { id: Date.now(), itemId: '', answers: {}, customCounts: {}, count: 1, notes: '' }])} 
           className="flex-1 bg-white text-slate-700 border border-gray-200 py-4 rounded-2xl font-black shadow-lg text-xs hover:bg-gray-50"
         >
           <i className="fas fa-plus mr-1"></i> عملية جديدة
