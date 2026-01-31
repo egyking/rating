@@ -39,73 +39,69 @@ const RecordsList: React.FC<RecordsListProps> = ({ userRole, userId }) => {
   };
 
   return (
-    <div className="space-y-4">
-      <div className="flex justify-between items-center no-print">
-        <h3 className="text-sm font-black text-gray-800 uppercase tracking-widest">أرشيف التقييمات</h3>
-        <div className="flex gap-2">
-          <button onClick={() => exportToExcel(records)} className="bg-emerald-600 text-white w-9 h-9 rounded-xl flex items-center justify-center shadow-md">
-            <i className="fas fa-file-excel text-xs"></i>
+    <div className="space-y-3">
+      <div className="flex justify-between items-center no-print px-1">
+        <h3 className="text-xs font-black text-gray-800 uppercase tracking-widest">أرشيف التقييمات</h3>
+        <div className="flex gap-1.5">
+          <button onClick={() => exportToExcel(records)} className="bg-emerald-600 text-white w-8 h-8 rounded-lg flex items-center justify-center shadow-sm">
+            <i className="fas fa-file-excel text-[10px]"></i>
           </button>
-          <button onClick={printReport} className="bg-slate-700 text-white w-9 h-9 rounded-xl flex items-center justify-center shadow-md">
-            <i className="fas fa-print text-xs"></i>
+          <button onClick={printReport} className="bg-slate-700 text-white w-8 h-8 rounded-lg flex items-center justify-center shadow-sm">
+            <i className="fas fa-print text-[10px]"></i>
           </button>
         </div>
       </div>
 
-      {/* Compact Filters */}
-      <div className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100 no-print grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3 items-end">
+      {/* Compact Filters - Dense Grid */}
+      <div className="bg-white p-3 rounded-xl shadow-sm border border-gray-100 no-print grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-2 items-end">
         {userRole === 'admin' && (
-          <div className="space-y-1">
-            <label className="text-[9px] font-black text-gray-400 uppercase mr-1">المفتش</label>
-            <input type="text" placeholder="الاسم..." className="w-full bg-gray-50 border border-gray-100 rounded-lg p-2 text-[10px] font-bold" value={filters.employee} onChange={e => handleFilterChange('employee', e.target.value)} />
+          <div className="space-y-1 col-span-2 md:col-span-1">
+            <label className="text-[8px] font-black text-gray-400 mr-1">المفتش</label>
+            <input type="text" placeholder="الاسم..." className="w-full bg-gray-50 border border-gray-100 rounded-lg p-1.5 text-[10px] font-bold" value={filters.employee} onChange={e => handleFilterChange('employee', e.target.value)} />
           </div>
         )}
-        <div className="space-y-1">
-          <label className="text-[9px] font-black text-gray-400 uppercase mr-1">البند</label>
-          <input type="text" placeholder="البند الفرعي..." className="w-full bg-gray-50 border border-gray-100 rounded-lg p-2 text-[10px] font-bold" value={filters.sub_item} onChange={e => handleFilterChange('sub_item', e.target.value)} />
+        <div className="space-y-1 col-span-2 md:col-span-1">
+          <label className="text-[8px] font-black text-gray-400 mr-1">البند الفرعي</label>
+          <input type="text" placeholder="البحث..." className="w-full bg-gray-50 border border-gray-100 rounded-lg p-1.5 text-[10px] font-bold" value={filters.sub_item} onChange={e => handleFilterChange('sub_item', e.target.value)} />
         </div>
         <div className="space-y-1">
-          <label className="text-[9px] font-black text-gray-400 uppercase mr-1">الحالة</label>
-          <select className="w-full bg-gray-50 border border-gray-100 rounded-lg p-2 text-[10px] font-bold" value={filters.status} onChange={e => handleFilterChange('status', e.target.value)}>
+          <label className="text-[8px] font-black text-gray-400 mr-1">الحالة</label>
+          <select className="w-full bg-gray-50 border border-gray-100 rounded-lg p-1.5 text-[10px] font-bold" value={filters.status} onChange={e => handleFilterChange('status', e.target.value)}>
             <option value="">الكل</option>
             <option value="approved">معتمد</option>
             <option value="pending">معلق</option>
           </select>
         </div>
-        <div className="space-y-1">
-          <label className="text-[9px] font-black text-gray-400 uppercase mr-1">الفترة</label>
-          <div className="grid grid-cols-2 gap-1">
-             <input type="date" className="bg-gray-50 border border-gray-100 rounded-lg p-2 text-[10px] font-bold" value={filters.dateFrom} onChange={e => handleFilterChange('dateFrom', e.target.value)} />
-             <input type="date" className="bg-gray-50 border border-gray-100 rounded-lg p-2 text-[10px] font-bold" value={filters.dateTo} onChange={e => handleFilterChange('dateTo', e.target.value)} />
-          </div>
-        </div>
-        <div className="flex gap-1 h-9">
-           <button onClick={loadRecords} className="flex-1 bg-blue-600 text-white rounded-lg text-[10px] font-black uppercase">فلترة</button>
-           <button onClick={clearFilters} className="bg-gray-100 text-gray-400 px-3 rounded-lg text-[10px] font-black">X</button>
+        <div className="flex gap-1 h-8">
+           <button onClick={loadRecords} className="flex-1 bg-blue-600 text-white rounded-lg text-[9px] font-black uppercase">تحديث</button>
+           <button onClick={clearFilters} className="bg-gray-100 text-gray-400 px-2.5 rounded-lg text-[9px] font-black">X</button>
         </div>
       </div>
 
-      <div className="space-y-2">
+      <div className="space-y-1.5">
         {loading ? (
           <div className="p-10 text-center"><i className="fas fa-spinner fa-spin text-blue-600"></i></div>
         ) : records.length > 0 ? (
           records.map(record => (
-            <div key={record.id} className="bg-white p-3 rounded-xl border border-gray-100 flex items-center justify-between hover:bg-slate-50 transition-colors">
-               <div className="flex-1 overflow-hidden ml-4">
-                  <div className="flex items-center gap-2 mb-0.5">
-                     <span className={`w-1.5 h-1.5 rounded-full ${record.status === 'approved' ? 'bg-emerald-500' : 'bg-orange-500'}`}></span>
-                     <p className="font-black text-slate-800 text-[11px] truncate">{record.sub_item}</p>
+            <div key={record.id} className="bg-white p-2.5 rounded-lg border border-gray-100 flex items-center justify-between hover:bg-slate-50 transition-colors">
+               <div className="flex-1 overflow-hidden ml-3">
+                  <div className="flex items-center gap-1.5 mb-0.5">
+                     <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${record.status === 'approved' ? 'bg-emerald-500' : 'bg-orange-500'}`}></span>
+                     <p className="font-black text-slate-800 text-[10px] truncate">{record.sub_item}</p>
                   </div>
-                  <p className="text-[9px] text-gray-400 font-bold">
-                    {record.inspector_name} • {record.date} • {record.code}
-                  </p>
+                  <div className="flex items-center gap-2 text-[8px] text-gray-400 font-bold">
+                    <span>{record.inspector_name}</span>
+                    <span className="w-1 h-1 bg-gray-200 rounded-full"></span>
+                    <span>{record.date}</span>
+                    <span className="w-1 h-1 bg-gray-200 rounded-full"></span>
+                    <span className="text-blue-500">{record.code}</span>
+                  </div>
                </div>
-               <div className="flex items-center gap-4">
-                  <div className="text-center bg-blue-50 px-3 py-1 rounded-lg border border-blue-100">
-                     <p className="text-[10px] font-black text-blue-600 leading-none">{record.count}</p>
-                     <p className="text-[7px] font-bold text-blue-400 uppercase mt-0.5">العدد</p>
+               <div className="flex items-center gap-2">
+                  <div className="text-center bg-blue-50/50 px-2 py-0.5 rounded border border-blue-100">
+                     <p className="text-[10px] font-black text-blue-600">{record.count}</p>
                   </div>
-                  <span className={`hidden sm:inline-block px-2 py-0.5 rounded text-[8px] font-black uppercase ${
+                  <span className={`px-1.5 py-0.5 rounded text-[7px] font-black uppercase ${
                     record.status === 'approved' ? 'bg-emerald-50 text-emerald-600' : 'bg-orange-50 text-orange-600'
                   }`}>
                     {record.status === 'approved' ? 'معتمد' : 'معلق'}
@@ -114,7 +110,7 @@ const RecordsList: React.FC<RecordsListProps> = ({ userRole, userId }) => {
             </div>
           ))
         ) : (
-          <div className="p-20 text-center text-gray-300 font-black text-xs uppercase tracking-widest">لا توجد سجلات</div>
+          <div className="p-10 text-center text-gray-300 font-black text-[10px] uppercase">لا توجد سجلات مطابقة</div>
         )}
       </div>
     </div>
