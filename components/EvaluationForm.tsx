@@ -72,15 +72,12 @@ const EvaluationForm: React.FC<EvaluationFormProps> = ({ onSaved, currentUser })
     } : c));
   };
 
-  // وظيفة التحقق من الشروط لعرض السؤال
   const shouldShowQuestion = (question: any, cardAnswers: any) => {
     if (!question.showIf) return true;
     const { field, value } = question.showIf;
-    // مقارنة مرنة (==) لضمان توافق الأرقام والنصوص
     return cardAnswers[field] == value; 
   };
 
-  // دالة مساعدة لتحديد نوع السؤال بدقة
   const getQuestionType = (q: any) => {
     const definedType = (q.type || '').toLowerCase();
     if (definedType === 'select' || (q.options && Array.isArray(q.options) && q.options.length > 0)) {
@@ -92,13 +89,28 @@ const EvaluationForm: React.FC<EvaluationFormProps> = ({ onSaved, currentUser })
     return 'text';
   };
 
-  // دالة مساعدة لفك ترميز JSON بأمان
   const safeJsonParse = (data: any) => {
     if (Array.isArray(data)) return data;
     if (typeof data === 'string') {
         try { return JSON.parse(data); } catch { return []; }
     }
     return [];
+  };
+
+  // Helper to safely extract label from string or object option
+  const getOptionLabel = (opt: any) => {
+    if (typeof opt === 'object' && opt !== null) {
+      return opt.text || opt.label || opt.name || opt.value || JSON.stringify(opt);
+    }
+    return String(opt);
+  };
+
+  // Helper to safely extract value from string or object option
+  const getOptionValue = (opt: any) => {
+    if (typeof opt === 'object' && opt !== null) {
+      return opt.value || opt.id || opt.text || JSON.stringify(opt);
+    }
+    return String(opt);
   };
 
   const handleSave = async () => {
@@ -165,7 +177,7 @@ const EvaluationForm: React.FC<EvaluationFormProps> = ({ onSaved, currentUser })
           ).slice(0, 10);
 
           let itemQuestions: any[] = [];
-          let subTypes: string[] = [];
+          let subTypes: any[] = [];
           if (selectedItem) {
              itemQuestions = safeJsonParse(selectedItem.questions);
              subTypes = safeJsonParse(selectedItem.sub_types);
@@ -242,7 +254,9 @@ const EvaluationForm: React.FC<EvaluationFormProps> = ({ onSaved, currentUser })
                           onChange={e => setCards(cards.map(c => c.id === card.id ? {...c, subType: e.target.value} : c))}
                         >
                           <option value="">اختر النوع...</option>
-                          {subTypes.map(st => <option key={st} value={st}>{st}</option>)}
+                          {subTypes.map((st: any, idx) => (
+                            <option key={idx} value={getOptionValue(st)}>{getOptionLabel(st)}</option>
+                          ))}
                         </select>
                       </div>
                     )}
@@ -267,7 +281,9 @@ const EvaluationForm: React.FC<EvaluationFormProps> = ({ onSaved, currentUser })
                                     onChange={e => handleUpdateAnswer(card.id, q.label, e.target.value)}
                                   >
                                     <option value="">-- اختر من القائمة --</option>
-                                    {q.options?.map((opt: string) => <option key={opt} value={opt}>{opt}</option>)}
+                                    {q.options?.map((opt: any, optIdx: number) => (
+                                      <option key={optIdx} value={getOptionValue(opt)}>{getOptionLabel(opt)}</option>
+                                    ))}
                                   </select>
                                 ) : qType === 'boolean' ? (
                                   <div className="flex gap-2">
