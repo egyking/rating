@@ -78,3 +78,40 @@ export interface Holiday {
   date: string;
   name: string;
 }
+
+// --- Analytics & Reporting Types ---
+
+export interface ReportFilter {
+  dateFrom: string;
+  dateTo: string;
+  inspectorId?: string;
+  department?: string;
+  status?: string;
+}
+
+export interface KPIMetric {
+  label: string;
+  value: number | string;
+  change?: number; // percentage change
+  trend?: 'up' | 'down' | 'neutral';
+  color?: 'blue' | 'emerald' | 'orange' | 'red';
+  icon?: string;
+}
+
+export interface InspectorPerformance {
+  inspectorId: string;
+  inspectorName: string;
+  totalInspections: number; // Unique visits/records
+  totalItems: number; // Sum of counts
+  approvedItems: number;
+  pendingItems: number;
+  approvalRate: number;
+  score: number;
+  riskFactor: 'low' | 'medium' | 'high';
+}
+
+export interface CategoryBreakdown {
+  name: string;
+  value: number;
+  percentage: number;
+}
