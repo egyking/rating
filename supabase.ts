@@ -25,7 +25,7 @@ export const supabaseService = {
     return { success: !error, error };
   },
 
-  // Evaluation Items (The logic moved from Sheets)
+  // Evaluation Items
   getItems: async () => {
     const { data } = await supabase.from('evaluation_items').select('*').order('sub_item');
     return data || [];
@@ -70,10 +70,16 @@ export const supabaseService = {
   },
 
   saveBatchEvaluations: async (evaluations: any[]) => {
+    // جلب قائمة المعرفات الحقيقية لتجنب خطأ Foreign Key
+    const { data: realInspectors } = await supabase.from('inspectors').select('id');
+    const validIds = new Set(realInspectors?.map(i => i.id) || []);
+
     const cleanEvals = evaluations.map(ev => ({
       ...ev,
-      inspector_id: /^[0-9a-f]{8}-[0-9a-f]{4}-[0-5][0-9a-f]{3}-[089ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(ev.inspector_id) ? ev.inspector_id : null
+      // إذا كان المعرف غير موجود في جدول المفتشين (مثل الحسابات التجريبية)، نرسله كـ null
+      inspector_id: validIds.has(ev.inspector_id) ? ev.inspector_id : null
     }));
+
     const { data, error } = await supabase.from('evaluation_records').insert(cleanEvals).select();
     return { success: !error, count: data?.length || 0, error };
   },
